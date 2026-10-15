@@ -1,0 +1,16 @@
+[package]
+name = "ferry-app"
+description = "Ferry application state and update logic (Elm architecture). No rendering."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ferry-core.workspace = true
+ferry-http.workspace = true
+ferry-store.workspace = true
+
+[lints]
+workspace = true

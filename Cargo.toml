@@ -1,0 +1,63 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/ferry-core",
+    "crates/ferry-http",
+    "crates/ferry-store",
+    "crates/ferry-app",
+    "crates/ferry-ui",
+    "xtask",
+]
+default-members = ["crates/ferry-ui"]
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+ferry-core = { path = "crates/ferry-core" }
+ferry-http = { path = "crates/ferry-http" }
+ferry-store = { path = "crates/ferry-store" }
+ferry-app = { path = "crates/ferry-app" }
+
+# External
+iced = { version = "0.14", default-features = false }
+iced_test = "0.14"
+memory-stats = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "1"
+
+# Dev / test
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+insta = "1"
+proptest = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Non-negotiable 5: no unwrap/expect/panic outside tests (see clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "warn"
+dbg_macro = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# Tests exercise large inputs (50 MB bodies); keep them fast in debug builds.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.test]
+opt-level = 1

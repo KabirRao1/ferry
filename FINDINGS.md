@@ -1,0 +1,13 @@
+# Findings
+
+QA findings: adversarial, performance and UX. Each one becomes a failing regression test before it is fixed.
+
+Severity: **critical** (data loss, crash, security) · **high** (feature broken) · **medium** (wrong in edge cases, budget at risk) · **low** (polish).
+
+| ID | Severity | Found in | Summary | Regression test | Status |
+|---|---|---|---|---|---|
+| FND-001 | low | Phase 0, xtask unit test | Binary-size budget rejected growth of exactly +10% because of float rounding (`1100/1000 - 1 = 0.10000000000000009`). | `xtask budgets::tests::f00_ac3_binary_growth_over_10_percent_fails` | fixed |
+| FND-002 | medium | Phase 0, `cargo mutants --all` | 6 surviving mutants in `push_wrapped`'s CRLF detection (text.rs:89–90). No test covered CRLF or a lone `\r` at a wrap boundary. | `ferry-core text_index f06_ac9_crlf_at_wrap_boundary_adds_no_line`, `f06_ac9_lone_carriage_return_at_end_wraps_as_content` | fixed |
+| FND-003 | low | Phase 0, `cargo mutants --all` | Equivalent mutant `delta < 0` → `<=` in `BodyView::update`. Fixed by changing `ScrolledBy` to `isize` and using `saturating_add_signed`, which removes the comparison. | `ferry-app body_view f06_ac9_scroll_clamps_both_ends` | fixed |
+| FND-004 | medium | Phase 0, `cargo mutants` (sequential re-run) | Surviving mutant `>` → `>=` at text.rs:77 in `LineIndex::line`. No example test had a body starting with an empty line, where the mutant reads `body[0 - 1]`; the property test only hit that case by chance. | `ferry-core text_index f06_ac9_leading_empty_lines` | fixed |
+| FND-005 | high | Phase 0, gate tooling | `cargo mutants` exits 3 (timeouts) even when some mutants were missed. `xtask` treated 3 as a pass, so the gate would have accepted missed mutants. It now reads `mutants.out/missed.txt`. | `xtask gate::tests::f00_ac5_missed_mutants_fail_even_when_exit_code_reports_timeouts` | fixed |

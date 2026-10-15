@@ -1,0 +1,28 @@
+[package]
+name = "ferry-ui"
+description = "Ferry native UI (iced). Views are functions of ferry-app state."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ferry"
+path = "src/main.rs"
+
+[dependencies]
+ferry-app.workspace = true
+# CPU rendering by default: ~10x less memory and ~10x faster cold start than wgpu (ADR-0018).
+iced = { workspace = true, features = ["tiny-skia", "thread-pool", "x11", "wayland"] }
+
+[features]
+default = []
+# Opt-in GPU rendering (wgpu). iced falls back to tiny-skia when no GPU is available.
+gpu = ["iced/wgpu"]
+
+[dev-dependencies]
+iced_test.workspace = true
+
+[lints]
+workspace = true

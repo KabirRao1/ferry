@@ -1,0 +1,22 @@
+[package]
+name = "ferry-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ferry-core = { path = "../crates/ferry-core" }
+
+# Not part of the root workspace (ADR-0009).
+[workspace]
+
+[[bin]]
+name = "line_index"
+path = "fuzz_targets/line_index.rs"
+test = false
+doc = false
+bench = false

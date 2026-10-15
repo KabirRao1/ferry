@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+description = "Ferry build, gate and budget tooling. Run with `cargo xtask <command>`."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+toml.workspace = true
+
+[lints]
+workspace = true

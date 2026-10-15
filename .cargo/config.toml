@@ -1,0 +1,6 @@
+[alias]
+xtask = "run --quiet --package xtask --"
+
+[env]
+# Deterministic CPU rendering for headless UI tests and snapshots (ADR-0006).
+ICED_TEST_BACKEND = "tiny-skia"
