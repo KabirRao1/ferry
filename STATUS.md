@@ -9,8 +9,12 @@
 - Mutation testing: 92 mutants, 0 missed (71 caught, 12 timeouts, 8 unviable) after the fixes in FINDINGS.md.
 - Budgets on Windows (tiny-skia, ADR-0018): idle RSS 22 MB (1.05x the empty window), cold start 68 ms, 50 MB scroll p95 3.1 ms, binary 4.0 MB.
 
+## CI
+- Gate passes on Linux, macOS and Windows, and fuzz smoke passes (run 38792056359). Budget baselines are recorded for all three OSes.
+- Watch FND-008: scrolling a 50 MB body on macOS is at 14.5 ms p95 (budget 16 ms).
+
 ## Blockers
-- None. The Linux and macOS budget baselines are recorded only after the first CI run (`cargo xtask budgets --record` on each OS).
+- None.
 
 ## Notes for the next session
 - Work alone (ADR-0001): write the contract and failing tests, confirm they fail on `todo!()`, implement, then run `cargo xtask gate`.

@@ -96,7 +96,7 @@ Postman is not installed on the development machine. Budgets are calibrated agai
 | Release binary | 9.96 MB | 3.99 MB |
 
 **Decision.** `ferry-ui` builds iced with `tiny-skia` only. wgpu becomes the opt-in `gpu` Cargo feature. Budgets are calibrated against an empty window built with the same (tiny-skia) features.
-**Consequences.** This fits the "low-memory" pitch (a 10x RSS and cold-start improvement), and the binary is 60% smaller. The CPU cost of drawing grows with window pixels, so frame time on 4K or high-DPI displays must be measured in Phase 4. If it exceeds the budget there, options are partial redraw, or defaulting to `gpu` only above a pixel threshold. This is reversible by flipping a feature. The `paste` advisory (ADR-0004) now applies only to `--features gpu` builds on macOS.
+**Consequences.** This fits the "low-memory" pitch (a 10x RSS and cold-start improvement), and the binary is 60% smaller. The CPU cost of drawing grows with window pixels, so frame time on 4K or high-DPI displays must be measured in Phase 4. If it exceeds the budget there, options are partial redraw, or defaulting to `gpu` only above a pixel threshold. This is reversible by flipping a feature. First CI evidence (run 38792056359): the 50 MB scroll p95 is 1.8 ms on Linux and 4.6 ms on Windows, but 14.5 ms on macOS at Retina 2x (FND-008). The `paste` advisory (ADR-0004) now applies only to `--features gpu` builds on macOS.
 
 ---
 
