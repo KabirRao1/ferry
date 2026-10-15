@@ -244,9 +244,17 @@ fn launch_once(exe: &Path) -> Result<(f64, f64)> {
     let mut child = Command::new(exe)
         .env("FERRY_PROBE", "1")
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("{}: {e}", exe.display()))?;
+    // Keep stderr so a failed launch reports why (for example, missing display libraries).
+    let stderr = child.stderr.take().map(|mut err| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = std::io::Read::read_to_string(&mut err, &mut text);
+            text
+        })
+    });
     let result = wait_for_marker(&mut child, t0).and_then(|cold| {
         // Measurement settle time, not test synchronization.
         std::thread::sleep(SETTLE);
@@ -254,7 +262,27 @@ fn launch_once(exe: &Path) -> Result<(f64, f64)> {
     });
     let _ = child.kill();
     let _ = child.wait();
-    result.map_err(|e| format!("{}: {e}", exe.display()))
+    let stderr = stderr.and_then(|h| h.join().ok()).unwrap_or_default();
+    result.map_err(|e| format!("{}: {e}{}", exe.display(), stderr_tail(&stderr)))
+}
+
+/// The last lines of a child's stderr, formatted for an error message.
+fn stderr_tail(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let tail = &lines[lines.len().saturating_sub(15)..];
+    format!(
+        "
+stderr (last {} lines):
+  {}",
+        tail.len(),
+        tail.join(
+            "
+  "
+        )
+    )
 }
 
 fn wait_for_marker(child: &mut Child, t0: Instant) -> Result<f64> {
@@ -449,5 +477,34 @@ mod tests {
         };
         assert!(report(&file(1000), &m, true, "otheros").is_ok());
         assert!(report(&file(1000), &m, true, "testos").is_err());
+    }
+
+    #[test]
+    fn f00_ac3_stderr_tail_keeps_last_lines() {
+        assert_eq!(stderr_tail(""), "");
+        assert_eq!(
+            stderr_tail(
+                "
+ 
+"
+            ),
+            ""
+        );
+        let many: String = (0..20)
+            .map(|i| {
+                format!(
+                    "line {i}
+"
+                )
+            })
+            .collect();
+        let tail = stderr_tail(&many);
+        assert!(tail.starts_with(
+            "
+stderr (last 15 lines):
+  line 5
+"
+        ));
+        assert!(tail.ends_with("line 19"));
     }
 }

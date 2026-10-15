@@ -23,7 +23,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # mutants diffs against origin/main
       - name: Install toolchain (from rust-toolchain.toml)
@@ -36,7 +36,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libvulkan1 mesa-vulkan-drivers xvfb
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libx11-xcb1 libxcursor1 libxrandr2 libxi6 xvfb
       - name: Gate (Linux, virtual display, with mutants)
         if: runner.os == 'Linux'
         run: xvfb-run -a cargo xtask gate --ci
@@ -49,7 +49,7 @@ jobs:
     name: fuzz smoke (60 s per target)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup toolchain install nightly --profile minimal
       - uses: taiki-e/install-action@v2
         with:
@@ -58,5 +58,5 @@ jobs:
         working-directory: fuzz
         run: |
           for t in $(cargo +nightly fuzz list); do
-            cargo +nightly fuzz run "$t" -- -max_total_time=60
+            cargo +nightly fuzz run --target x86_64-unknown-linux-gnu "$t" -- -max_total_time=60
           done
