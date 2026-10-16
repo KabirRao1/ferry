@@ -131,6 +131,12 @@ The user asked for Ferry to look like Postman and have all of its features, not 
 ## ADR-0028: Web view for Preview and Visualize (2026-10-16, user decision)
 The user chose to include an embedded system web view (WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux) in the default build, for the response Preview and Visualize tabs (F22). This relaxes the kickoff differentiator "no webview": the UI itself stays native iced. To keep the memory budgets, the web view is created only when the user opens Preview or Visualize and is destroyed when they leave it. Idle RSS and cold start are therefore unaffected, and a separate scenario budget will cover an open preview.
 
+## ADR-0029: Timing breakdown granularity (2026-10-16)
+F06-AC2 asked for DNS, connect, TLS, time to first byte and download. reqwest exposes a hook around the whole connector (`connector_layer`), which covers TCP and TLS together, and Ferry's own resolver times DNS. There is no hook between the TCP and TLS handshakes short of replacing reqwest's connector. The breakdown is therefore DNS lookup, Connect (TCP and TLS), Waiting and Download. The marks travel with the request in a task-local, so concurrent sends never mix them; a connection reused from the pool has no DNS or Connect phase.
+
+## ADR-0030: Params table shows the URL's text (2026-10-16)
+F01-AC2 originally said the table shows pairs percent-decoded. Postman shows them as written and encodes at send time, which also makes the sync lossless: an untouched pair is never re-encoded, and `%20` typed into a value stays `%20`. Ferry follows Postman. Edited rows escape only the characters that would change the query's structure (`&`, `#`, and `=` in keys).
+
 ---
 
 ## v2 candidates

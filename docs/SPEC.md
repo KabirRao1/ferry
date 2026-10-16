@@ -47,7 +47,7 @@ Phase 1 delivered AC1 and AC5. Standard method names match case-insensitively. T
 | AC | Criterion |
 |---|---|
 | F01-AC1 | **Given** a new request, **then** the method is `GET`. **When** the user picks a method, **then** it is one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, or a custom token matching RFC 9110 `token`. |
-| F01-AC2 | **Given** a URL with a query string, **then** the params table lists every pair in order, percent-decoded, with duplicate keys kept. |
+| F01-AC2 | **Given** a URL with a query string, **then** the params table lists every pair in order, as written in the URL (not percent-decoded, as in Postman), with duplicate keys kept. |
 | F01-AC3 | **When** a param row is added, edited, removed or disabled, **then** the URL's query updates to match. Disabled rows are left out of the URL. |
 | F01-AC4 | **Given** any sequence of URL and table edits, **then** the URL and table stay consistent. Untouched params keep their original order and encoding (property test). |
 | F01-AC5 | **Given** a URL without an `http://` or `https://` scheme or without a host, **when** the user sends, **then** nothing is sent and the request shows `Enter a URL starting with http:// or https://`. |
@@ -55,7 +55,7 @@ Phase 1 delivered AC1 and AC5. Standard method names match case-insensitively. T
 | F01-AC7 | **When** the user types a method name into the method field, **then** a standard name selects that method and any other RFC 9110 token becomes a custom method. An invalid name shows the `MethodError` text and blocks sending. |
 | F01-AC8 | **Given** the params table, **then** each row has a key, a value, a description (never sent) and an enabled checkbox. A trailing blank row is always present; typing into it adds a row. |
 
-Phase 2 sync rules: when the URL is edited, the enabled rows are replaced by the URL's pairs while disabled rows keep their positions. When the table is edited, the query is rebuilt from enabled rows: an untouched row keeps its original encoding, an edited row is percent-encoded (keeping `{{...}}` verbatim), and a row with an empty value is written as just its key. The fragment is preserved. An empty query drops the `?`.
+Phase 2 sync rules (ADR-0030): when the URL is edited, the enabled rows are replaced by the URL's pairs while disabled rows keep their positions. When the table is edited, the query is rebuilt from enabled rows with a key: an untouched row keeps its original text, an edited row is written as typed with only `&`, `#` (and `=` in keys) escaped, and a row with an empty value is written as just its key. `{{...}}` stays verbatim. The fragment is preserved. An empty query drops the `?`. Percent-encoding of everything else happens when the request is built.
 
 ## F02 Headers
 Scope: editable rows, enable/disable per row, duplicate keys allowed, auto-generated headers, bulk edit.
@@ -63,8 +63,8 @@ Scope: editable rows, enable/disable per row, duplicate keys allowed, auto-gener
 | AC | Criterion |
 |---|---|
 | F02-AC1 | **Given** header rows (key, value, description, enabled), **when** the request is sent, **then** every enabled row with a non-blank key is sent in table order, duplicates included. Disabled and blank-key rows are not sent. |
-| F02-AC2 | **Given** an enabled header whose name is not an RFC 9110 token, **then** sending is blocked with `Header name "<name>" contains invalid character '<c>'`. **Given** a value containing CR or LF, **then** sending is blocked with `Header "<name>" value cannot contain line breaks`. |
-| F02-AC3 | **Given** a request, **then** the Headers tab can show the auto-generated headers: `User-Agent: ferry/<version>`, `Accept: */*`, `Accept-Encoding: gzip, deflate, br, zstd`, `Content-Type` from the body (F03), `Authorization` or the API key header from auth (F04), and `Host` and `Content-Length` as "calculated when sent". They are hidden by default behind a "<n> hidden" toggle. An enabled user header with the same name (case-insensitive) replaces an auto header, and the auto row shows as overridden. `Host` and `Content-Length` cannot be overridden. |
+| F02-AC2 | **Given** an enabled header whose name is not an RFC 9110 token, **then** sending is blocked with `Header name "<name>" contains invalid character '<c>'`. **Given** a value containing CR or LF, **then** sending is blocked with `Header "<name>" value cannot contain line breaks`; any other control character except tab blocks it with `Header "<name>" value contains invalid character <escaped char>`. |
+| F02-AC3 | **Given** a request, **then** the Headers tab can show the auto-generated headers: `User-Agent: ferry/<version>`, `Accept: */*`, `Accept-Encoding: gzip, deflate, br, zstd`, `Content-Type` from the body (F03), `Authorization` or the API key header from auth (F04), and `Host` and `Content-Length` as "calculated when sent". They are hidden by default behind a "<n> hidden" toggle. An enabled user header with the same name (case-insensitive) replaces an auto header, and the auto row shows as overridden. |
 | F02-AC4 | **When** the user switches to bulk edit, **then** rows show as `key: value` lines, with disabled rows prefixed by `//`. Editing the text and switching back rebuilds the rows. Descriptions survive when the key on that line is unchanged. |
 
 ## F03 Body
