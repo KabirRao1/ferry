@@ -16,8 +16,8 @@
 - Findings: FND-010 (critical, fixed: deeply nested JSON could exhaust memory), FND-011 (low, fixed).
 
 ## CI
-- Linux and macOS budget baselines were cleared for Phase 2 (ADR-0036). Record them from the first green CI run after this push.
-- FND-008 is still open: scrolling a 50 MB body on macOS CI is over 16 ms p95 (advisory).
+- CI run 38977119070 green on Linux, macOS and Windows. Linux and macOS baselines recorded from it: binary 12.41 MB and 7.87 MB; idle RSS with 10 tabs 1.52x and 1.05x.
+- FND-008 is still open: scrolling a 50 MB body on macOS CI is close to the 16 ms p95 budget (15.7 ms in run 38977119070; advisory).
 
 ## Blockers
 - None.
