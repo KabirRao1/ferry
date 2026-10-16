@@ -6,13 +6,18 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
+bytes.workspace = true
 memchr = "2"
 thiserror.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+insta.workspace = true
 proptest.workspace = true
 
 [[bench]]

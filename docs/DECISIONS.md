@@ -9,7 +9,7 @@ Architecture decision records. Newest last. Format: context, decision, consequen
 **Decision.** The user asked for no subagents. One session plays every role. `.claude/agents/` is not created.
 **Consequences.** The tests-first discipline still holds: for each behavior, write the `// CONTRACT` signatures with `todo!()` bodies and the failing tests, run them and confirm they fail on `todo!()`, then implement. Adversarial, perf and UX passes become explicit steps of the per-feature checklist. The "developer never edits tests" rule becomes: test changes after implementation starts need a recorded reason (a commit message or an entry here).
 
-## ADR-0002: License MIT OR Apache-2.0 (2026-10-14, user accepted recommendation)
+## ADR-0002: License MIT OR Apache-2.0 (2026-10-14, user accepted recommendation; superseded by ADR-0026)
 Dual license, the Rust ecosystem default. `cargo deny` allows only permissive licenses (see `deny.toml`).
 
 ## ADR-0003: Toolchain (2026-10-14)
@@ -97,6 +97,33 @@ Postman is not installed on the development machine. Budgets are calibrated agai
 
 **Decision.** `ferry-ui` builds iced with `tiny-skia` only. wgpu becomes the opt-in `gpu` Cargo feature. Budgets are calibrated against an empty window built with the same (tiny-skia) features.
 **Consequences.** This fits the "low-memory" pitch (a 10x RSS and cold-start improvement), and the binary is 60% smaller. The CPU cost of drawing grows with window pixels, so frame time on 4K or high-DPI displays must be measured in Phase 4. If it exceeds the budget there, options are partial redraw, or defaulting to `gpu` only above a pixel threshold. This is reversible by flipping a feature. First CI evidence (run 38792056359): the 50 MB scroll p95 is 1.8 ms on Linux and 4.6 ms on Windows, but 14.5 ms on macOS at Retina 2x (FND-008). The `paste` advisory (ADR-0004) now applies only to `--features gpu` builds on macOS.
+
+## ADR-0019: TLS with rustls and the ring provider (2026-10-15)
+**Context.** reqwest 0.13 defaults to rustls with the aws-lc-rs crypto provider. Building aws-lc-rs can require CMake and NASM, especially on Windows, which makes the project harder for a newcomer to build.
+**Decision.** Use `reqwest` with `rustls-no-provider`, and install `rustls::crypto::ring` as the process-wide provider in `ferry_http::Client::new`. ring builds with only a C compiler. Certificate checks use `rustls-platform-verifier`, so the OS trust store applies, including corporate CAs.
+**Consequences.** One fewer build prerequisite. The verifier's root bundle (`webpki-root-certs`) is licensed CDLA-Permissive-2.0, which is now in `deny.toml`.
+
+## ADR-0020: Effects returned from `update()` (2026-10-15)
+**Decision.** `App::update(message) -> Option<Effect>` never does I/O. `Effect::Send { id, request, cancel }` describes the work, and `ferry_app::run(effect, client)` executes it on the tokio runtime and returns `Message::Finished { id, result }`. That includes indexing the response body, so the UI thread never indexes 50 MB. Each send gets an id from a counter in `App` (deterministic, no RNG), and results whose id isn't the current `Phase::Sending` are ignored. Cancel fires a `CancellationToken` held in `Phase::Sending`, and `Client::send` races it with `tokio::select!`.
+**Consequences.** Every flow is a sequence of plain function calls in tests, including end-to-end runs against local servers (`ferry-app/tests/flow.rs`). `ferry-ui`'s only job is to turn `Effect`s into `iced::Task`s. iced runs on its `tokio` executor feature, because reqwest needs tokio.
+
+## ADR-0021: Binary-size re-baseline for the HTTP stack (2026-10-15)
+Adding reqwest, rustls, ring, h2 and the response decoders took the release binary from 3.99 MB to 8.15 MB on Windows. This is a feature cost, not a regression, so the Windows baseline was re-recorded. Dropping zstd (−0.14 MB) and brotli (−0.2 MB) was measured and rejected: an API client should decode whatever a server sends. The Linux and macOS baselines were cleared and are re-recorded from the next CI run.
+
+## ADR-0022: Repository layout (2026-10-15, user request)
+The user asked for an industry-standard layout that's easy to run. Root: README (quick start per OS), CHANGELOG (Keep a Changelog), CONTRIBUTING, SECURITY, the Apache-2.0 `LICENSE`, `.editorconfig`, toolchain and lint config. Tracking documents moved to `docs/` (SPEC, DECISIONS, FEATURES, FINDINGS, STATUS, plus a new ARCHITECTURE); the kickoff had them at the root. `.github/` has issue and PR templates, Dependabot (monthly, grouped), and a `release` workflow that builds binaries for four targets from `v*` tags. `llvm-tools-preview` left `rust-toolchain.toml` (`cargo xtask coverage` installs it on demand), so a first build downloads less.
+
+## ADR-0023: Response header representation (2026-10-15)
+Headers come from reqwest's `HeaderMap`. Names are lowercase (HTTP/2 requires it, and hyper normalizes HTTP/1). Values that aren't valid UTF-8 are decoded lossily for display. The map groups repeated names, so interleaved headers (`a`, `b`, `a`) are listed as `a`, `a`, `b`, with each name's values in received order. Exact wire order would need a raw HTTP/1 parser, which isn't worth it for v1.
+
+## ADR-0024: Strict URL prefix (2026-10-15)
+The WHATWG URL parser (the `url` crate, matching browsers) accepts `https:///path` and `http:/host`, treating them as `https://path` and `http://host`. Ferry requires the literal prefix `http://` or `https://`, followed by a character that isn't `/` or `\`, so a typo never silently sends to a host such as `path`. This matches the error text "Enter a URL starting with http:// or https://".
+
+## ADR-0025: Headless UI test limits (2026-10-15)
+`iced_test`'s text selector cannot see a `pick_list`'s selected label, because it isn't a text widget. The visible method label is covered by a pixel snapshot (`screen_method_patch`) instead, and method selection itself by `ferry-app` flow tests. UI tests for Phase 1 were written right after the views rather than before. The views have no logic of their own: every behavior they show is tested first in `ferry-app`.
+
+## ADR-0026: License Apache-2.0 only (2026-10-16, user request)
+Supersedes ADR-0002. Ferry is licensed under Apache-2.0 alone, with the text in `LICENSE`; `LICENSE-MIT` is removed. Apache-2.0 adds an explicit patent grant. Dependencies are unaffected: `cargo deny` still allows MIT and the other permissive licenses for third-party crates.
 
 ---
 

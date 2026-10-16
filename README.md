@@ -1,47 +1,91 @@
 # Ferry
 
-A native, low-memory, offline HTTP API client written in Rust: a lean alternative to Postman.
+[![CI](https://github.com/KabirRao1/ferry/actions/workflows/ci.yml/badge.svg)](https://github.com/KabirRao1/ferry/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-- **Native UI** with [iced](https://iced.rs). No webview, no Electron.
-- **Collections are plain TOML files** in a folder: git-friendly, diffable, reviewable.
-- **Offline.** No account, no telemetry.
+**A native, low-memory, offline HTTP API client.** A lean alternative to Postman, written in Rust.
 
-> Status: Phase 0 (foundations). See [`STATUS.md`](STATUS.md) and [`FEATURES.md`](FEATURES.md).
+![Ferry showing a JSON response](docs/images/screenshot.png)
 
-## Building
+- **Native UI.** No browser engine, no Electron. Idles at about 24 MB of RAM and opens in under 100 ms.
+- **Handles huge responses.** A 50 MB body scrolls smoothly; only the visible lines are ever rendered.
+- **Offline and private.** No account, no sign-in, no telemetry.
+- **Plain-file collections** *(coming in Phase 3)*: requests saved as TOML files in a folder, so you can keep them in git and review them like code.
 
-Requires the Rust toolchain pinned in `rust-toolchain.toml` (rustup installs it automatically). On Windows you also need the MSVC C++ build tools.
-On Linux you need `libxkbcommon-dev` and `libwayland-dev`.
+> **Status: early development.** Ferry can send requests and show responses today.
+> Headers, bodies, auth, tabs, environments and collections are on the [roadmap](#roadmap).
+
+## Quick start
+
+### 1. Install Rust
+
+Install [rustup](https://rustup.rs). Ferry pins its Rust version in `rust-toolchain.toml`, and rustup downloads it automatically the first time you build.
+
+### 2. Install platform build tools
+
+| OS | What you need |
+|---|---|
+| **Windows** | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Desktop development with C++** workload. rustup's installer offers to install this for you. |
+| **macOS** | Xcode command line tools: `xcode-select --install` |
+| **Linux (Debian/Ubuntu)** | `sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev` |
+| **Linux (Fedora)** | `sudo dnf install gcc pkg-config libxkbcommon-devel wayland-devel` |
+
+### 3. Build and run
 
 ```sh
-cargo run --release          # launches `ferry`
+git clone https://github.com/KabirRao1/ferry.git
+cd ferry
+cargo run --release
 ```
 
-## Development
+The first build takes a few minutes. Later builds are incremental.
 
-| Command | What it does |
+To install the `ferry` command on your `PATH` instead:
+
+```sh
+cargo install --git https://github.com/KabirRao1/ferry ferry-ui
+```
+
+## Using Ferry
+
+1. Pick a method (GET, POST, …).
+2. Type a URL, for example `https://httpbin.org/json`.
+3. Press **Send**, **Enter** in the URL field, or **Ctrl+Enter** (**⌘+Enter** on macOS).
+4. Read the status, time and size. Switch between **Body** and **Headers**.
+
+While a request is in flight, **Send** becomes **Cancel**.
+
+## Roadmap
+
+| Phase | Features | Status |
+|---|---|---|
+| 0 | Foundations: CI, test harness, performance budgets | ✅ done |
+| 1 | Send a request, see status, headers and body | ✅ done |
+| 2 | Query params, headers, request bodies, auth, tabs, cancel/timeout/redirect/TLS options | planned |
+| 3 | Environments and `{{variables}}`, collections as TOML files, history | planned |
+| 4 | curl and Postman import, settings, keyboard-first UI, prebuilt releases | planned |
+
+The full specification with acceptance criteria is in [`docs/SPEC.md`](docs/SPEC.md).
+
+## Contributing
+
+Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development setup, the test-first workflow and the merge gate.
+
+| Document | Contents |
 |---|---|
-| `cargo nextest run --workspace` | All tests (unit, property, headless UI) |
-| `cargo xtask gate` | Full merge gate: fmt, clippy, tests, coverage, deny, budgets, arch, mutants |
-| `cargo xtask budgets [--record]` | Measure RSS, cold start, 50 MB scroll frame time and binary size against `budgets.toml` |
-| `cargo xtask arch` | Enforce crate dependency direction |
-| `cargo xtask coverage` | Per-crate line coverage floors |
-| `cargo xtask mutants [--all]` | Mutation testing of changed code in core, app, store |
-| `cargo +nightly fuzz run line_index` (in `fuzz/`) | Fuzz a parser (Linux) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How the crates fit together |
+| [`docs/SPEC.md`](docs/SPEC.md) | Features and acceptance criteria |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture decision records |
+| [`docs/FEATURES.md`](docs/FEATURES.md) | Feature status and test counts |
+| [`docs/FINDINGS.md`](docs/FINDINGS.md) | QA findings and their regression tests |
+| [`CHANGELOG.md`](CHANGELOG.md) | Notable changes per release |
 
-Workspace layout:
+## Security
 
-| Crate | Responsibility |
-|---|---|
-| `ferry-core` | Domain types and pure logic. No I/O. |
-| `ferry-http` | HTTP execution, timing, cancellation |
-| `ferry-store` | Filesystem persistence, atomic writes, file watching |
-| `ferry-app` | Application state and `update()`. Headless-testable. |
-| `ferry-ui` | iced views (the `ferry` binary) |
-| `xtask` | Gate, budgets and CI tooling |
-
-Specification: [`SPEC.md`](SPEC.md). Decisions: [`DECISIONS.md`](DECISIONS.md). QA findings: [`FINDINGS.md`](FINDINGS.md).
+Please report vulnerabilities privately. See [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
+Licensed under the Apache License, Version 2.0 ([`LICENSE`](LICENSE)).
+
+Unless you explicitly state otherwise, any contribution you intentionally submit for inclusion in this project, as defined in the Apache-2.0 license, is licensed as above, without any additional terms or conditions.

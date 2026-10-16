@@ -13,6 +13,13 @@ pub const FLOORS: &[(&str, f64)] = &[
 ];
 
 pub fn run() -> Result {
+    // Needed only for coverage, so it is not in rust-toolchain.toml (keeps first builds lean).
+    util::run(
+        "rustup component add llvm-tools-preview",
+        std::process::Command::new("rustup")
+            .current_dir(util::root())
+            .args(["component", "add", "llvm-tools-preview"]),
+    )?;
     let out = util::root().join("target").join("llvm-cov-summary.json");
     util::run(
         "cargo llvm-cov",

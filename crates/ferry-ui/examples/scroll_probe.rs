@@ -6,9 +6,9 @@
 //! Prints one JSON line of frame intervals, then exits.
 
 use std::num::NonZeroU32;
-use std::sync::Arc;
 use std::time::Instant;
 
+use ferry_app::Bytes;
 use ferry_app::body_view::{BodyView, Message as Body};
 use iced::{Subscription, Task};
 
@@ -34,7 +34,7 @@ fn boot() -> Probe {
         body.push('\n');
     }
     let view =
-        NonZeroU32::new(4096).and_then(|w| BodyView::new(Arc::from(body.into_bytes()), w).ok());
+        NonZeroU32::new(4096).and_then(|w| BodyView::new(Bytes::from(body.into_bytes()), w).ok());
     Probe {
         view,
         frames: Vec::with_capacity(FRAMES),

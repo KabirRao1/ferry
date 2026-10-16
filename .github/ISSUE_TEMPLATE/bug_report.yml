@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in Ferry doesn't work as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Set method to POST
+        2. Enter URL ...
+        3. Press Send
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ferry version or commit
+      placeholder: "v0.1.0 or a1b2c3d"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, logs, or the server response if relevant. Remove secrets first.

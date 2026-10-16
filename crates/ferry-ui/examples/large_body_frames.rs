@@ -5,9 +5,9 @@
 //! tiny-skia rasterizes on the CPU at 2x scale, so this overstates GPU cost.
 
 use std::num::NonZeroU32;
-use std::sync::Arc;
 use std::time::Instant;
 
+use ferry_app::Bytes;
 use ferry_app::body_view::{BodyView, Message};
 use ferry_ui::body_view;
 use iced::{Settings, Size};
@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         body.push_str(line);
         body.push('\n');
     }
-    let bytes: Arc<[u8]> = Arc::from(body.into_bytes());
+    let bytes = Bytes::from(body.into_bytes());
 
     let t = Instant::now();
     let wrap = NonZeroU32::new(4096).ok_or("wrap")?;

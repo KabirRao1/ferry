@@ -6,11 +6,18 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
+bytes.workspace = true
 ferry-core.workspace = true
 ferry-http.workspace = true
 ferry-store.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+wiremock.workspace = true
 
 [lints]
 workspace = true

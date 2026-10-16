@@ -28,7 +28,7 @@ Conventions:
 
 Scope: method, URL, query params table in two-way sync with the URL.
 
-Phase 1 covers AC1 and AC5. AC2 to AC4 and AC6 move to Phase 2 with F02 (ADR-0015).
+Phase 1 delivered AC1 and AC5. Standard method names match case-insensitively. The Phase 1 UI offers only the standard methods; typing a custom method arrives in Phase 2. AC2 to AC4 and AC6 move to Phase 2 with F02 (ADR-0015). URLs must literally start with `http://` or `https://` followed by a host, which is stricter than the WHATWG parser (ADR-0024).
 
 | AC | Criterion |
 |---|---|
@@ -52,7 +52,7 @@ Scope: none, Basic, Bearer, API key (header or query).
 
 Scope: send, cancel in flight, timeout, follow-redirects toggle, TLS-verify toggle.
 
-Phase 1 covers AC1, AC6 and AC7.
+Phase 1 delivered AC1, AC6 and AC7. It also delivered parts of AC2 and AC3: Cancel works, and a fixed 30 s timeout applies with its exact error message. Making the timeout configurable belongs to F12. In AC1, Enter in the URL field also sends.
 
 | AC | Criterion |
 |---|---|
@@ -68,14 +68,14 @@ Phase 1 covers AC1, AC6 and AC7.
 
 Scope: status, timing breakdown, size, headers, body as pretty JSON / raw / hex for binary, search in body, virtualized rendering for large bodies.
 
-Phase 1 covers AC1 to AC5. AC9 to AC11 were built in the Phase 0 spike.
+Phase 1 delivered AC1 to AC5. AC9 to AC11 were built in the Phase 0 spike. AC2's timing breakdown comes in Phase 2.
 
 | AC | Criterion |
 |---|---|
 | F06-AC1 | **Given** a response, **then** the status code and reason phrase are shown (for example `200 OK`). |
 | F06-AC2 | **Given** a response, **then** the total time is shown. From Phase 2, it is broken down into DNS, connect, TLS, time to first byte and download. |
 | F06-AC3 | **Given** a response, **then** its body size is shown in human units (B, KB, MB). |
-| F06-AC4 | **Given** a response, **then** all response headers are listed in received order, including duplicates. |
+| F06-AC4 | **Given** a response, **then** all response headers are listed, including duplicates. Names are shown lowercase, since HTTP/2 and the HTTP stack normalize them. Repeated headers keep their received order and are grouped under the name's first appearance (ADR-0023). |
 | F06-AC5 | **Given** a text body, **then** it is shown as raw text. |
 | F06-AC6 | **Given** a JSON body, **then** a pretty-printed view is available and is the default. |
 | F06-AC7 | **Given** a non-text (binary) body, **then** a hex view is shown. |

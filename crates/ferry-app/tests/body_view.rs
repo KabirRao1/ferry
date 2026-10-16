@@ -2,12 +2,17 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code
 
 use std::num::NonZeroU32;
-use std::sync::Arc;
+
+use bytes::Bytes;
 
 use ferry_app::body_view::{BodyView, Message};
 
 fn view(body: &str) -> BodyView {
-    BodyView::new(Arc::from(body.as_bytes()), NonZeroU32::new(80).unwrap()).unwrap()
+    BodyView::new(
+        Bytes::copy_from_slice(body.as_bytes()),
+        NonZeroU32::new(80).unwrap(),
+    )
+    .unwrap()
 }
 
 fn texts(v: &BodyView, rows: usize) -> Vec<(usize, String)> {
@@ -54,7 +59,7 @@ fn f06_ac9_scroll_clamps_both_ends() {
 #[test]
 fn f06_ac9_invalid_utf8_is_replaced() {
     let v = BodyView::new(
-        Arc::from(&[b'a', 0xff, b'b'][..]),
+        Bytes::from_static(&[b'a', 0xff, b'b']),
         NonZeroU32::new(80).unwrap(),
     )
     .unwrap();

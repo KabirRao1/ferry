@@ -4,20 +4,9 @@ machine = "Windows 11 Home 10.0.26200, 16 logical CPUs"
 method = "Release builds. Cold start: median of 5 launches, process spawn to first frame (FERRY_PROBE marker). Idle RSS: working set 1.5 s after first frame, median of 5. Scroll: scroll_probe example, 50 MB body, 300 frames with ICED_PRESENT_MODE=immediate, p95 frame interval. Baseline: examples/empty_window with identical iced features."
 
 [baseline.windows]
-empty_window_rss_mb = 21.33
-empty_window_cold_start_ms = 49.72
-binary_size_bytes = 4181504
-
-# linux and macos: from CI run 38792056359 (GitHub-hosted ubuntu-latest under xvfb, macos-latest arm64), 2026-10-15.
-[baseline.linux]
-empty_window_rss_mb = 13.4
-empty_window_cold_start_ms = 29.0
-binary_size_bytes = 7392461
-
-[baseline.macos]
-empty_window_rss_mb = 88.5
-empty_window_cold_start_ms = 277.0
-binary_size_bytes = 3869245
+empty_window_rss_mb = 21.79
+empty_window_cold_start_ms = 48.69
+binary_size_bytes = 8544256
 
 [budgets]
 idle_rss_ratio_max = 2.0

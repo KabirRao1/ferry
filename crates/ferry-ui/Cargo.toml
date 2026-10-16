@@ -6,6 +6,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [[bin]]
 name = "ferry"
@@ -14,7 +16,8 @@ path = "src/main.rs"
 [dependencies]
 ferry-app.workspace = true
 # CPU rendering by default: ~10x less memory and ~10x faster cold start than wgpu (ADR-0018).
-iced = { workspace = true, features = ["tiny-skia", "thread-pool", "x11", "wayland"] }
+# `tokio`: effects (HTTP sends) run on the tokio runtime that reqwest needs.
+iced = { workspace = true, features = ["tiny-skia", "tokio", "x11", "wayland"] }
 
 [features]
 default = []

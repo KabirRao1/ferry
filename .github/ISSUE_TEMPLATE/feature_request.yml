@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an improvement to Ferry
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you're trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Ferry to do?
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Out of scope for v1: accounts, cloud sync, team features, pre-request or test scripts,
+        GraphQL, WebSocket, gRPC, mock servers, OAuth2 flows and plugins. Requests for these are
+        recorded as v2 candidates.

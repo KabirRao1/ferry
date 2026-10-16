@@ -4,6 +4,7 @@
 
 pub mod body_view;
 pub mod probe;
+pub mod screen;
 pub mod shell;
 
 /// The `iced` element type used across Ferry views.

@@ -1,12 +1,28 @@
 [package]
 name = "ferry-http"
+description = "Ferry HTTP execution: sending, timing capture and cancellation."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
+bytes.workspace = true
+ferry-core.workspace = true
+# rustls with the `ring` provider: builds with only a C compiler (no CMake/NASM).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "gzip", "brotli", "deflate", "zstd"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio.workspace = true
+tokio-util.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+flate2 = "1"
+tokio = { workspace = true, features = ["io-util"] }
+wiremock.workspace = true
 
 [lints]
 workspace = true

@@ -28,6 +28,10 @@ pub fn view(state: &BodyView) -> Element<'_, Message> {
         }));
         let body = mouse_area(container(lines).width(Fill).height(Fill).clip(true))
             .on_scroll(|delta| Message::ScrolledBy(lines_for_delta(delta)));
+        if state.top() == 0 && state.line_count() <= rows {
+            // Everything fits: no scrollbar.
+            return body.into();
+        }
         let last = u32::try_from(state.line_count().saturating_sub(1)).unwrap_or(u32::MAX);
         let top = u32::try_from(state.top()).unwrap_or(u32::MAX);
         // Sliders grow upward; invert so the top of the track is line 0.

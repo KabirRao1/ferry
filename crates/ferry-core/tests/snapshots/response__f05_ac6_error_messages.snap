@@ -1,0 +1,11 @@
+---
+source: crates/ferry-core/tests/response.rs
+expression: "text.join(\"\\n\")"
+---
+Enter a URL starting with http:// or https://
+DNS lookup failed for api.example.test
+Connection refused by 127.0.0.1:8080
+TLS handshake failed: received corrupt message
+Request timed out after 30 s
+Request timed out after 0.2 s
+Request failed: connection reset

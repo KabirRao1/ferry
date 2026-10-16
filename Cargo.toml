@@ -15,8 +15,13 @@ exclude = ["fuzz"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 publish = false
+repository = "https://github.com/KabirRao1/ferry"
+homepage = "https://github.com/KabirRao1/ferry"
+readme = "README.md"
+keywords = ["http", "api", "client", "postman", "rest"]
+categories = ["development-tools", "network-programming", "gui"]
 
 [workspace.dependencies]
 # Internal crates
@@ -26,18 +31,23 @@ ferry-store = { path = "crates/ferry-store" }
 ferry-app = { path = "crates/ferry-app" }
 
 # External
+bytes = "1"
 iced = { version = "0.14", default-features = false }
 iced_test = "0.14"
 memory-stats = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "time"] }
+tokio-util = "0.7"
 toml = "1"
+url = "2"
 
 # Dev / test
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 insta = "1"
 proptest = "1"
+wiremock = "0.6"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

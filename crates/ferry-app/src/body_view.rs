@@ -2,7 +2,8 @@
 
 use std::borrow::Cow;
 use std::num::NonZeroU32;
-use std::sync::Arc;
+
+use bytes::Bytes;
 
 use ferry_core::text::{IndexError, LineIndex};
 
@@ -20,7 +21,7 @@ pub enum Message {
 /// A response body plus its display-line index and scroll position.
 #[derive(Debug, Clone)]
 pub struct BodyView {
-    body: Arc<[u8]>,
+    body: Bytes,
     index: LineIndex,
     top: usize,
 }
@@ -31,7 +32,7 @@ impl BodyView {
     ///
     /// # Errors
     /// [`IndexError::TooLarge`] if the body cannot be indexed.
-    pub fn new(body: Arc<[u8]>, wrap: NonZeroU32) -> Result<Self, IndexError> {
+    pub fn new(body: Bytes, wrap: NonZeroU32) -> Result<Self, IndexError> {
         let index = LineIndex::build(&body, wrap)?;
         Ok(Self {
             body,
