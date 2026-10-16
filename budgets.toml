@@ -8,6 +8,19 @@ empty_window_rss_mb = 21.79
 empty_window_cold_start_ms = 48.69
 binary_size_bytes = 8544256
 
+# Linux and macOS: from CI run 38966606471 (GitHub-hosted runners). Binary
+# sizes are the logged MB values (1 MB = 1048576 bytes), so they are within
+# 0.005 MB of the exact size.
+[baseline.linux]
+empty_window_rss_mb = 13.3
+empty_window_cold_start_ms = 34.0
+binary_size_bytes = 11764940
+
+[baseline.macos]
+empty_window_rss_mb = 87.7
+empty_window_cold_start_ms = 485.0
+binary_size_bytes = 7350517
+
 [budgets]
 idle_rss_ratio_max = 2.0
 cold_start_ms_max = 400.0

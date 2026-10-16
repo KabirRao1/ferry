@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use ferry_app::body_view::{self as body, BodyView};
 use ferry_app::{
-    App, Bytes, Finished, Header, Message, Method, Received, Response, ResponseTab, WRAP_BYTES,
+    App, Bytes, Finished, Header, Message, Received, Response, ResponseTab, WRAP_BYTES,
 };
 use ferry_ui::body_view::{self, LINE_HEIGHT};
 use ferry_ui::screen::{self, CANCELLED, EMPTY_BODY, IDLE_HINT, SENDING, URL_INPUT};
@@ -316,7 +316,7 @@ fn f00_ac1_snapshot_idle() {
 #[test]
 fn f01_ac1_snapshot_selected_method() {
     let mut app = App::default();
-    app.update(Message::MethodSelected(Method::Patch));
+    app.update(Message::MethodSelected(ferry_app::Method::Patch));
     app.update(Message::UrlChanged(
         "https://api.example.test/items/7".into(),
     ));
