@@ -125,6 +125,12 @@ The WHATWG URL parser (the `url` crate, matching browsers) accepts `https:///pat
 ## ADR-0026: License Apache-2.0 only (2026-10-16, user request)
 Supersedes ADR-0002. Ferry is licensed under Apache-2.0 alone, with the text in `LICENSE`; `LICENSE-MIT` is removed. Apache-2.0 adds an explicit patent grant. Dependencies are unaffected: `cargo deny` still allows MIT and the other permissive licenses for third-party crates.
 
+## ADR-0027: Postman parity, local only (2026-10-16, user decision)
+The user asked for Ferry to look like Postman and have all of its features, not only API testing. After the research in `docs/POSTMAN_PARITY.md`, the user chose **local parity**. Ferry gets Postman's layout and every feature that runs on the user's machine: scripts and tests (`pm` API), the Collection Runner and a CLI, GraphQL, WebSocket, Socket.IO, SSE, gRPC, MQTT, OAuth 1.0/2.0 and the other auth types, cookies, the console, code snippets, a local mock server, OpenAPI/HAR import and docs generation. This reverses the v1 anti-goals in `docs/kickoff.md` section 1 except accounts, cloud sync and team features, which remain out of scope along with the rest of tier C. The layout follows Postman; the name, icon and colors stay Ferry's own. New features are F14–F35 in `docs/SPEC.md`, and the phase plan there replaces kickoff section 7 from Phase 2 on. Each phase still stops for user review.
+
+## ADR-0028: Web view for Preview and Visualize (2026-10-16, user decision)
+The user chose to include an embedded system web view (WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux) in the default build, for the response Preview and Visualize tabs (F22). This relaxes the kickoff differentiator "no webview": the UI itself stays native iced. To keep the memory budgets, the web view is created only when the user opens Preview or Visualize and is destroyed when they leave it. Idle RSS and cold start are therefore unaffected, and a separate scenario budget will cover an open preview.
+
 ---
 
 ## v2 candidates

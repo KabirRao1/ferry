@@ -13,6 +13,28 @@
 | F08 | Environments | 3 | not started | 0 | 0 |
 | F09 | Collections | 3 | not started | 0 | 0 |
 | F10 | History | 3 | not started | 0 | 0 |
-| F11 | Import/export | 4 | not started | 0 | 0 |
-| F12 | Settings | 4 | not started | 0 | 0 |
-| F13 | Keyboard | 4 | not started | 0 | 0 |
+| F11 | Import/export | 5 | not started | 0 | 0 |
+| F12 | Settings | 7 | not started | 0 | 0 |
+| F13 | Keyboard | 7 | not started | 0 | 0 |
+| F14 | Workbench layout | 2 | not started | 0 | 0 |
+| F15 | Scripts and tests | 4 | not started | 0 | 0 |
+| F16 | Collection Runner and CLI | 4 | not started | 0 | 0 |
+| F17 | Cookies | 3 | not started | 0 | 0 |
+| F18 | Console | 3 | not started | 0 | 0 |
+| F19 | Code snippets | 5 | not started | 0 | 0 |
+| F20 | Advanced auth | 5 | not started | 0 | 0 |
+| F21 | Network settings | 5 | not started | 0 | 0 |
+| F22 | Preview and Visualize | 3 | not started | 0 | 0 |
+| F23 | GraphQL | 6 | not started | 0 | 0 |
+| F24 | WebSocket and Socket.IO | 6 | not started | 0 | 0 |
+| F25 | Server-sent events | 6 | not started | 0 | 0 |
+| F26 | gRPC | 6 | not started | 0 | 0 |
+| F27 | MQTT | 6 | not started | 0 | 0 |
+| F28 | Mock server | 7 | not started | 0 | 0 |
+| F29 | Documentation | 7 | not started | 0 | 0 |
+| F30 | OpenAPI and HAR | 5 | not started | 0 | 0 |
+| F31 | Vault | 5 | not started | 0 | 0 |
+| F32 | Saved examples | 3 | not started | 0 | 0 |
+| F33 | Find and replace | 7 | not started | 0 | 0 |
+| F34 | Flows | later | not started | 0 | 0 |
+| F35 | Performance tests | later | not started | 0 | 0 |

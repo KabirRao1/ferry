@@ -7,13 +7,13 @@
 
 ![Ferry showing a JSON response](docs/images/screenshot.png)
 
-- **Native UI.** No browser engine, no Electron. Idles at about 24 MB of RAM and opens in under 100 ms.
+- **Native UI.** No Electron; a web view is only created for HTML previews. Idles at about 24 MB of RAM and opens in under 100 ms.
 - **Handles huge responses.** A 50 MB body scrolls smoothly; only the visible lines are ever rendered.
 - **Offline and private.** No account, no sign-in, no telemetry.
 - **Plain-file collections** *(coming in Phase 3)*: requests saved as TOML files in a folder, so you can keep them in git and review them like code.
 
 > **Status: early development.** Ferry can send requests and show responses today.
-> Headers, bodies, auth, tabs, environments and collections are on the [roadmap](#roadmap).
+> Headers, bodies, auth, tabs, collections, scripts and more protocols are on the [roadmap](#roadmap).
 
 ## Quick start
 
@@ -57,15 +57,18 @@ While a request is in flight, **Send** becomes **Cancel**.
 
 ## Roadmap
 
+Ferry is heading for Postman's layout and every Postman feature that runs on your machine: no account, no cloud ([parity map](docs/POSTMAN_PARITY.md)).
+
 | Phase | Features | Status |
 |---|---|---|
 | 0 | Foundations: CI, test harness, performance budgets | ✅ done |
 | 1 | Send a request, see status, headers and body | ✅ done |
-| 2 | Query params, headers, request bodies, auth, tabs, cancel/timeout/redirect/TLS options | planned |
-| 3 | Environments and `{{variables}}`, collections as TOML files, history | planned |
-| 4 | curl and Postman import, settings, keyboard-first UI, prebuilt releases | planned |
-
-The full specification with acceptance criteria is in [`docs/SPEC.md`](docs/SPEC.md).
+| 2 | Postman-style workbench, query params, headers, bodies, auth, tabs, redirect/TLS options, timing breakdown | in progress |
+| 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | planned |
+| 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI | planned |
+| 5 | Import/export (Postman, cURL, OpenAPI, HAR), code snippets, OAuth and other auth, proxy and certificates, vault | planned |
+| 6 | GraphQL, WebSocket, Socket.IO, server-sent events, gRPC, MQTT | planned |
+| 7 | Local mock server, docs generation, find and replace, settings, keyboard, releases | planned |
 
 ## Contributing
 
