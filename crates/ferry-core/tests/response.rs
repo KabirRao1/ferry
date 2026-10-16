@@ -1,4 +1,4 @@
-//! F06-AC1..AC3 formatting, F05-AC3/AC6 and F01-AC5 error messages.
+//! F06-AC1..AC3 formatting, F05-AC3/AC6, F01-AC5 and F03-AC5 error messages.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code
 
 use std::time::Duration;
@@ -14,7 +14,7 @@ fn response(status: u16, reason: &str) -> Response {
         reason: reason.into(),
         headers: vec![],
         body: Bytes::new(),
-        elapsed: Duration::ZERO,
+        ..Response::default()
     }
 }
 
@@ -88,6 +88,10 @@ fn f05_ac6_error_messages() {
         },
         SendError::Timeout {
             after: Duration::from_millis(200),
+        },
+        SendError::File {
+            path: r"C:\data\photo.png".into(),
+            detail: "The system cannot find the file specified. (os error 2)".into(),
         },
         SendError::Other {
             detail: "connection reset".into(),

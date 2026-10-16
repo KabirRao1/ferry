@@ -1,25 +1,12 @@
 [calibration]
-date = "2026-10-15"
+date = "2026-10-16"
 machine = "Windows 11 Home 10.0.26200, 16 logical CPUs"
-method = "Release builds. Cold start: median of 5 launches, process spawn to first frame (FERRY_PROBE marker). Idle RSS: working set 1.5 s after first frame, median of 5. Scroll: scroll_probe example, 50 MB body, 300 frames with ICED_PRESENT_MODE=immediate, p95 frame interval. Baseline: examples/empty_window with identical iced features."
+method = "Release builds. Cold start: median of 5 launches, process spawn to first frame (FERRY_PROBE marker). Idle RSS: working set with 10 tabs open (FERRY_PROBE_TABS), 1.5 s after first frame, median of 5. Scroll: scroll_probe example, 50 MB body, 300 frames with ICED_PRESENT_MODE=immediate, p95 frame interval. Baseline: examples/empty_window with identical iced features."
 
 [baseline.windows]
-empty_window_rss_mb = 21.79
-empty_window_cold_start_ms = 48.69
-binary_size_bytes = 8544256
-
-# Linux and macOS: from CI run 38966606471 (GitHub-hosted runners). Binary
-# sizes are the logged MB values (1 MB = 1048576 bytes), so they are within
-# 0.005 MB of the exact size.
-[baseline.linux]
-empty_window_rss_mb = 13.3
-empty_window_cold_start_ms = 34.0
-binary_size_bytes = 11764940
-
-[baseline.macos]
-empty_window_rss_mb = 87.7
-empty_window_cold_start_ms = 485.0
-binary_size_bytes = 7350517
+empty_window_rss_mb = 21.59
+empty_window_cold_start_ms = 74.88
+binary_size_bytes = 9825792
 
 [budgets]
 idle_rss_ratio_max = 2.0

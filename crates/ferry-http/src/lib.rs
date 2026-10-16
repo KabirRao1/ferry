@@ -3,20 +3,30 @@
 //! Tested only against local servers. DNS goes through an injectable
 //! [`Resolver`], so lookup failures are testable without a network.
 
+mod timing;
+
 use std::error::Error;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
-use ferry_core::response::Header;
+use ferry_core::body::guess_content_type;
+use ferry_core::request::{PartValue, RequestBody, SendOptions};
+use ferry_core::response::{Header, Timing};
 
 pub use ferry_core::error::SendError;
 pub use ferry_core::request::Request;
 pub use ferry_core::response::Response;
 pub use tokio_util::sync::CancellationToken;
+
+use timing::{Marks, TimingLayer};
+
+/// Redirects followed when [`SendOptions::follow_redirects`] is on (F05-AC4).
+pub const MAX_REDIRECTS: usize = 10;
 
 /// Future returned by [`Resolver::resolve`].
 pub type Resolving = Pin<Box<dyn Future<Output = io::Result<Vec<SocketAddr>>> + Send>>;
@@ -68,34 +78,74 @@ pub enum Outcome {
     Cancelled,
 }
 
+/// One reqwest client per combination of [`SendOptions`], built on first use.
+/// Redirect policy and certificate checks are per client in reqwest.
+struct Clients {
+    config: Config,
+    built: [OnceLock<reqwest::Client>; 4],
+}
+
+impl Clients {
+    fn slot(options: SendOptions) -> usize {
+        usize::from(options.follow_redirects) * 2 + usize::from(options.verify_tls)
+    }
+
+    fn get(&self, options: SendOptions) -> Result<&reqwest::Client, SendError> {
+        let slot = &self.built[Self::slot(options)];
+        if let Some(client) = slot.get() {
+            return Ok(client);
+        }
+        let client = build(&self.config, options)?;
+        Ok(slot.get_or_init(|| client))
+    }
+}
+
+fn build(config: &Config, options: SendOptions) -> Result<reqwest::Client, SendError> {
+    // Process-wide; an error only means a provider is already installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let redirect = if options.follow_redirects {
+        reqwest::redirect::Policy::limited(MAX_REDIRECTS)
+    } else {
+        reqwest::redirect::Policy::none()
+    };
+    reqwest::Client::builder()
+        .user_agent(ferry_core::draft::USER_AGENT)
+        .timeout(config.timeout)
+        .redirect(redirect)
+        .tls_danger_accept_invalid_certs(!options.verify_tls)
+        .dns_resolver(Arc::new(ResolverAdapter(Arc::clone(&config.resolver))))
+        .connector_layer(TimingLayer)
+        .build()
+        .map_err(|e| SendError::Other {
+            detail: describe(&e),
+        })
+}
+
 // CONTRACT
 /// A reusable HTTP client. Cheap to clone.
 #[derive(Clone)]
 pub struct Client {
-    inner: reqwest::Client,
+    clients: Arc<Clients>,
     timeout: Duration,
 }
 
 impl Client {
     // CONTRACT
-    /// Build a client.
+    /// Build a client. The client for the default options is built now, so
+    /// a broken TLS setup shows up immediately.
     ///
     /// # Errors
     /// [`SendError::Other`] if the TLS backend cannot be initialized.
     pub fn new(config: Config) -> Result<Self, SendError> {
-        // Process-wide; an error only means a provider is already installed.
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let inner = reqwest::Client::builder()
-            .user_agent(concat!("ferry/", env!("CARGO_PKG_VERSION")))
-            .timeout(config.timeout)
-            .dns_resolver(Arc::new(ResolverAdapter(config.resolver)))
-            .build()
-            .map_err(|e| SendError::Other {
-                detail: describe(&e),
-            })?;
+        let timeout = config.timeout;
+        let clients = Clients {
+            config,
+            built: Default::default(),
+        };
+        clients.get(SendOptions::default())?;
         Ok(Self {
-            inner,
-            timeout: config.timeout,
+            clients: Arc::new(clients),
+            timeout,
         })
     }
 
@@ -117,19 +167,41 @@ impl Client {
     }
 
     async fn exchange(&self, request: &Request) -> Result<Response, SendError> {
+        let client = self.clients.get(request.options)?;
         let method =
             reqwest::Method::from_bytes(request.method.as_str().as_bytes()).map_err(|e| {
                 SendError::Other {
                     detail: e.to_string(),
                 }
             })?;
+        let mut builder = client.request(method, request.url.clone());
+        for header in &request.headers {
+            builder = builder.header(header.name.as_str(), header.value.as_str());
+        }
+        builder = match &request.body {
+            RequestBody::Empty => builder,
+            RequestBody::Bytes(bytes) => builder.body(bytes.clone()),
+            RequestBody::File(path) => builder.body(read_file(path).await?),
+            RequestBody::Multipart(parts) => {
+                let mut form = reqwest::multipart::Form::new();
+                for part in parts {
+                    form = match &part.value {
+                        PartValue::Text(text) => form.text(part.name.clone(), text.clone()),
+                        PartValue::File(path) => {
+                            form.part(part.name.clone(), file_part(path).await?)
+                        }
+                    };
+                }
+                builder.multipart(form)
+            }
+        };
+
+        let marks = Marks::new();
         let start = Instant::now();
-        let response = self
-            .inner
-            .request(method, request.url.clone())
-            .send()
+        let response = timing::scope(&marks, builder.send())
             .await
             .map_err(|e| self.classify(&e, &request.url))?;
+        let headers_at = Instant::now();
         let status = response.status();
         let headers = response
             .headers()
@@ -143,12 +215,21 @@ impl Client {
             .bytes()
             .await
             .map_err(|e| self.classify(&e, &request.url))?;
+        let end = Instant::now();
+        let (dns, connect_total) = marks.take();
+        let connect = connect_total.map(|total| total.saturating_sub(dns.unwrap_or_default()));
         Ok(Response {
             status: status.as_u16(),
             reason: status.canonical_reason().unwrap_or_default().to_owned(),
             headers,
             body,
-            elapsed: start.elapsed(),
+            elapsed: end - start,
+            timing: Timing {
+                dns,
+                connect,
+                waiting: (headers_at - start).saturating_sub(connect_total.unwrap_or_default()),
+                download: end - headers_at,
+            },
         })
     }
 
@@ -186,15 +267,44 @@ impl Client {
     }
 }
 
-/// Adapts a [`Resolver`] to reqwest, tagging failures so they classify as DNS errors.
+/// Read a body file (F03-AC5, F03-AC6).
+async fn read_file(path: &Path) -> Result<Vec<u8>, SendError> {
+    tokio::fs::read(path).await.map_err(|e| SendError::File {
+        path: path.display().to_string(),
+        detail: e.to_string(),
+    })
+}
+
+/// A multipart file part with its name and guessed content type (F03-AC5).
+async fn file_part(path: &Path) -> Result<reqwest::multipart::Part, SendError> {
+    let bytes = read_file(path).await?;
+    let part = reqwest::multipart::Part::bytes(bytes);
+    let part = match path.file_name() {
+        Some(name) => part.file_name(name.to_string_lossy().into_owned()),
+        None => part,
+    };
+    part.mime_str(guess_content_type(path))
+        .map_err(|e| SendError::Other {
+            detail: describe(&e),
+        })
+}
+
+/// Adapts a [`Resolver`] to reqwest, timing lookups and tagging failures so
+/// they classify as DNS errors.
 struct ResolverAdapter(Arc<dyn Resolver>);
 
 impl reqwest::dns::Resolve for ResolverAdapter {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().to_owned();
         let lookup = self.0.resolve(&host);
+        let marks = timing::current();
         Box::pin(async move {
-            match lookup.await {
+            let start = Instant::now();
+            let result = lookup.await;
+            if let Some(marks) = marks {
+                marks.add_dns(start.elapsed());
+            }
+            match result {
                 Ok(addrs) if !addrs.is_empty() => {
                     Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
                 }

@@ -17,6 +17,8 @@ use serde::{Deserialize, Serialize};
 use crate::util::{self, Result};
 
 const MARKER: &str = "FERRY_PROBE interactive";
+/// Tabs open while measuring idle RSS.
+const PROBE_TABS: usize = 10;
 const RUNS: usize = 5;
 const SETTLE: Duration = Duration::from_millis(1500);
 const START_TIMEOUT: Duration = Duration::from_secs(30);
@@ -169,7 +171,7 @@ fn report(file: &File, m: &Measured, ci: bool, os: &str) -> Result {
     };
     let rows = [
         Row {
-            name: "idle RSS / empty window",
+            name: "idle RSS, 10 tabs / empty",
             actual: format!(
                 "{rss_ratio:.2}x ({:.1} MB / {:.1} MB)",
                 m.ferry_rss_mb, m.empty_rss_mb
@@ -243,6 +245,8 @@ fn launch_once(exe: &Path) -> Result<(f64, f64)> {
     let t0 = Instant::now();
     let mut child = Command::new(exe)
         .env("FERRY_PROBE", "1")
+        // The kickoff budget: idle RSS with 10 tabs open (the empty window ignores it).
+        .env("FERRY_PROBE_TABS", PROBE_TABS.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

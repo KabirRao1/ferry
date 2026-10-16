@@ -137,6 +137,24 @@ F06-AC2 asked for DNS, connect, TLS, time to first byte and download. reqwest ex
 ## ADR-0030: Params table shows the URL's text (2026-10-16)
 F01-AC2 originally said the table shows pairs percent-decoded. Postman shows them as written and encodes at send time, which also makes the sync lossless: an untouched pair is never re-encoded, and `%20` typed into a value stays `%20`. Ferry follows Postman. Edited rows escape only the characters that would change the query's structure (`&`, `#`, and `=` in keys).
 
+## ADR-0031: Widget state outside the app (2026-10-16)
+iced keeps some state outside the view: the method combo box (`combo_box::State`) and multi-line editors (`text_editor::Content`, used for raw bodies and bulk edit). These are iced types, which `ferry-app` must not depend on. `ferry-ui::editors::Editors` holds them per tab and is re-synced after every update: created for new tabs, dropped for closed ones, and reloaded when the app rewrites a body itself (it bumps `Tab::raw_revision`, as Beautify does). Every edit still flows into `ferry-app` as a message, so the app remains the source of truth and its tests cover all behavior.
+
+## ADR-0032: One reqwest client per option set (2026-10-16)
+Redirect policy and certificate verification are client-level settings in reqwest, but per-request settings in Ferry (F05-AC4, F05-AC5). `ferry-http::Client` holds up to four reqwest clients, one per combination, built on first use. The default one is built eagerly so a broken TLS setup is reported at startup. Each client has its own connection pool, which is correct: a connection opened without verification must never be reused by a verifying request.
+
+## ADR-0033: Session file and data directory (2026-10-16)
+Open tabs are saved to `session.toml` in the per-user data directory (`%APPDATA%\Ferry`, `~/Library/Application Support/Ferry`, `$XDG_DATA_HOME/ferry`), written atomically through `ferry-store` within 2 s of a change and on window close. `FERRY_DATA_DIR` overrides the directory. Under `FERRY_PROBE` (performance budgets) nothing is read or written, so measuring never touches a developer's tabs; `FERRY_PROBE_TABS` opens that many tabs, and the idle RSS budget now measures 10 as the kickoff specified. File dialogs for form-data and binary bodies use `rfd`, which calls the native dialog on each OS.
+
+## ADR-0034: Bounded JSON pretty-printing (2026-10-16)
+Pretty-printing indents by depth, so deeply nested JSON grows quadratically: 200 KB of `[` and `]` would need about 10 GB (FND-010). `ferry_core::json::pretty` refuses output larger than 8 times the input plus 64 KiB, and the viewer falls back to Raw. Real responses grow 1.2 to 3 times.
+
+## ADR-0035: Phase 2 test order (2026-10-16)
+For Phase 2, contracts and their tests were written in the same pass for each module rather than confirming each test fails on a `todo!()` body first (ADR-0001). The evidence that the tests can fail comes from the mutation run over the Phase 2 diff (`cargo mutants --in-diff`), which the gate requires anyway, plus the defects the tests did catch while the modules were built (FND-010, FND-011).
+
+## ADR-0036: Binary-size re-baseline for Phase 2 (2026-10-16)
+The Windows release binary grew from 8.15 MB to 9.37 MB (+15%), past the 10% regression guard. Phase 2 adds the whole Postman-style workbench (combo boxes, text editors, tooltips, tab strip), native file dialogs (`rfd`), multipart bodies (`mime_guess`), and the TOML session (`serde`, `toml`). These are expected growth from the scope change in ADR-0027, not a regression, so the Windows baseline is re-recorded; Linux and macOS baselines are cleared and re-recorded from the next CI run, as in ADR-0021. Idle memory stays at 1.21x the empty window with 10 tabs open.
+
 ---
 
 ## v2 candidates

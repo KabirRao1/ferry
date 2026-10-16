@@ -1,0 +1,530 @@
+//! One workbench tab: its request draft, editing state and response
+//! (F01..F07).
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use ferry_core::auth::{ApiKeyLocation, AuthKind};
+use ferry_core::body::{BodyMode, FormField, RawLanguage};
+use ferry_core::draft::RequestDraft;
+use ferry_core::json::{self, JsonError};
+use ferry_core::kv::{self, KeyValue};
+use ferry_core::params::{self, Param};
+use ferry_core::request::{Method, MethodError};
+use ferry_core::response::Response;
+use ferry_http::CancellationToken;
+
+use crate::body_view::{self, BodyView};
+
+// CONTRACT
+/// Identifies a tab for its whole life, across reorders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TabId(pub u64);
+
+// CONTRACT
+/// Where a tab's request is in its life cycle.
+#[derive(Debug, Default)]
+pub enum Phase {
+    #[default]
+    Idle,
+    Sending {
+        id: u64,
+        cancel: CancellationToken,
+    },
+    Received(Box<Received>),
+    /// User-facing error text.
+    Failed(String),
+    Cancelled,
+}
+
+// CONTRACT
+/// How the response body is shown (F06-AC6, F06-AC7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BodyFormat {
+    #[default]
+    Pretty,
+    Raw,
+    Hex,
+}
+
+impl BodyFormat {
+    pub const ALL: [BodyFormat; 3] = [BodyFormat::Pretty, BodyFormat::Raw, BodyFormat::Hex];
+}
+
+impl std::fmt::Display for BodyFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Pretty => "Pretty",
+            Self::Raw => "Raw",
+            Self::Hex => "Hex",
+        })
+    }
+}
+
+// CONTRACT
+/// A completed response plus its body views.
+#[derive(Debug, Clone)]
+pub struct Received {
+    pub response: Response,
+    pub raw: BodyView,
+    /// Present when the body is JSON.
+    pub pretty: Option<BodyView>,
+    pub hex: BodyView,
+    pub format: BodyFormat,
+}
+
+impl Received {
+    // CONTRACT
+    /// The view for the selected format. Pretty falls back to Raw for
+    /// bodies that are not JSON.
+    #[must_use]
+    pub fn view(&self) -> &BodyView {
+        match self.format {
+            BodyFormat::Pretty => self.pretty.as_ref().unwrap_or(&self.raw),
+            BodyFormat::Raw => &self.raw,
+            BodyFormat::Hex => &self.hex,
+        }
+    }
+
+    fn view_mut(&mut self) -> &mut BodyView {
+        match self.format {
+            BodyFormat::Pretty => self.pretty.as_mut().unwrap_or(&mut self.raw),
+            BodyFormat::Raw => &mut self.raw,
+            BodyFormat::Hex => &mut self.hex,
+        }
+    }
+
+    // CONTRACT
+    /// The formats offered for this body.
+    #[must_use]
+    pub fn formats(&self) -> Vec<BodyFormat> {
+        BodyFormat::ALL
+            .into_iter()
+            .filter(|f| *f != BodyFormat::Pretty || self.pretty.is_some())
+            .collect()
+    }
+}
+
+// CONTRACT
+/// The request builder's tabs (F14-AC2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RequestTab {
+    #[default]
+    Params,
+    Authorization,
+    Headers,
+    Body,
+    Scripts,
+    Settings,
+}
+
+impl RequestTab {
+    pub const ALL: [RequestTab; 6] = [
+        RequestTab::Params,
+        RequestTab::Authorization,
+        RequestTab::Headers,
+        RequestTab::Body,
+        RequestTab::Scripts,
+        RequestTab::Settings,
+    ];
+}
+
+// CONTRACT
+/// The response pane's tabs (F14-AC3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ResponseTab {
+    #[default]
+    Body,
+    Cookies,
+    Headers,
+    TestResults,
+}
+
+impl ResponseTab {
+    pub const ALL: [ResponseTab; 4] = [
+        ResponseTab::Body,
+        ResponseTab::Cookies,
+        ResponseTab::Headers,
+        ResponseTab::TestResults,
+    ];
+}
+
+// CONTRACT
+/// The key-value tables a tab has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Table {
+    Params,
+    Headers,
+    UrlEncoded,
+    Form,
+}
+
+// CONTRACT
+/// An edit to one row of a table. A row index equal to the table's length
+/// addresses the trailing blank row: editing it appends a row (F01-AC8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowEdit {
+    Key(String),
+    Value(String),
+    Description(String),
+    Enabled(bool),
+    Remove,
+    /// Form-data only: stop sending a file and go back to text.
+    ClearFile,
+}
+
+// CONTRACT
+/// Which file a file picker fills in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileTarget {
+    /// A form-data row; the row index, or the table length for a new row.
+    FormField(usize),
+    Binary,
+}
+
+// CONTRACT
+/// Edits to a tab's request.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Edit {
+    /// Typed into the method field (F01-AC7).
+    MethodText(String),
+    MethodSelected(Method),
+    Url(String),
+    Row(Table, usize, RowEdit),
+    /// Switch a table between rows and bulk-edit text (F02-AC4).
+    ToggleBulk(Table),
+    BulkText(Table, String),
+    ToggleAutoHeaders,
+    BodyMode(BodyMode),
+    RawLanguage(RawLanguage),
+    RawText(String),
+    /// Re-indent raw JSON (F03-AC3).
+    Beautify,
+    ClearBinary,
+    AuthKind(AuthKind),
+    Username(String),
+    Password(String),
+    Token(String),
+    ApiKey(String),
+    ApiValue(String),
+    ApiLocation(ApiKeyLocation),
+    FollowRedirects(bool),
+    VerifyTls(bool),
+}
+
+// CONTRACT
+/// One open request.
+#[derive(Debug)]
+pub struct Tab {
+    pub id: TabId,
+    pub draft: RequestDraft,
+    /// The state the dirty dot compares against (F07-AC4).
+    pub saved: RequestDraft,
+    pub phase: Phase,
+    pub request_tab: RequestTab,
+    pub response_tab: ResponseTab,
+    /// Text of the method field, which may be a half-typed method.
+    pub method_text: String,
+    pub method_error: Option<MethodError>,
+    /// Bulk-edit text per table, while in bulk mode.
+    pub bulk: Vec<(Table, String)>,
+    pub show_auto_headers: bool,
+    /// Problem with the raw JSON body, refreshed on every change.
+    pub json_error: Option<JsonError>,
+    /// Bumped whenever the app itself rewrites the raw body (Beautify,
+    /// restore), so an editor widget knows to reload it.
+    pub raw_revision: u64,
+}
+
+impl Tab {
+    // CONTRACT
+    /// A tab for `draft`, whose saved state is a new request.
+    #[must_use]
+    pub fn new(id: TabId, draft: RequestDraft) -> Self {
+        let mut tab = Self {
+            id,
+            method_text: draft.method.to_string(),
+            draft,
+            saved: RequestDraft::default(),
+            phase: Phase::Idle,
+            request_tab: RequestTab::default(),
+            response_tab: ResponseTab::default(),
+            method_error: None,
+            bulk: Vec::new(),
+            show_auto_headers: false,
+            json_error: None,
+            raw_revision: 0,
+        };
+        tab.refresh_json_error();
+        tab
+    }
+
+    // CONTRACT
+    /// The tab's title: its URL, or `Untitled Request` (F07-AC1).
+    #[must_use]
+    pub fn title(&self) -> &str {
+        let url = self.draft.url.trim();
+        if url.is_empty() {
+            "Untitled Request"
+        } else {
+            url
+        }
+    }
+
+    // CONTRACT
+    /// Whether the request differs from its saved state (F07-AC4).
+    #[must_use]
+    pub fn is_dirty(&self) -> bool {
+        self.draft != self.saved
+    }
+
+    #[must_use]
+    pub fn is_sending(&self) -> bool {
+        matches!(self.phase, Phase::Sending { .. })
+    }
+
+    // CONTRACT
+    /// The bulk-edit text of `table`, if it is in bulk mode.
+    #[must_use]
+    pub fn bulk_text(&self, table: Table) -> Option<&str> {
+        self.bulk
+            .iter()
+            .find(|(t, _)| *t == table)
+            .map(|(_, text)| text.as_str())
+    }
+
+    // CONTRACT
+    /// Apply `edit`. Returns `true` if the request changed.
+    pub fn edit(&mut self, edit: Edit) -> bool {
+        let before = self.draft.clone();
+        let d = &mut self.draft;
+        match edit {
+            Edit::MethodText(text) => {
+                match Method::parse(&text) {
+                    Ok(method) => {
+                        d.method = method;
+                        self.method_error = None;
+                    }
+                    Err(e) => self.method_error = Some(e),
+                }
+                self.method_text = text;
+            }
+            Edit::MethodSelected(method) => {
+                self.method_text = method.to_string();
+                self.method_error = None;
+                d.method = method;
+            }
+            Edit::Url(url) => {
+                d.params = params::rows_from_url(&url, &d.params);
+                d.url = url;
+            }
+            Edit::Row(table, index, row_edit) => self.edit_row(table, index, row_edit),
+            Edit::ToggleBulk(table) => self.toggle_bulk(table),
+            Edit::BulkText(table, text) => {
+                if let Some((_, current)) = self.bulk.iter_mut().find(|(t, _)| *t == table) {
+                    current.clone_from(&text);
+                    self.apply_bulk(table, &text);
+                }
+            }
+            Edit::ToggleAutoHeaders => self.show_auto_headers = !self.show_auto_headers,
+            Edit::BodyMode(mode) => d.body.mode = mode,
+            Edit::RawLanguage(language) => d.body.language = language,
+            Edit::RawText(text) => d.body.raw = text,
+            Edit::Beautify => {
+                if let Some(pretty) = json::pretty(d.body.raw.as_bytes())
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+                {
+                    d.body.raw = pretty;
+                    self.raw_revision += 1;
+                }
+            }
+            Edit::ClearBinary => d.body.binary = None,
+            Edit::AuthKind(kind) => d.auth.kind = kind,
+            Edit::Username(v) => d.auth.username = v,
+            Edit::Password(v) => d.auth.password = v,
+            Edit::Token(v) => d.auth.token = v,
+            Edit::ApiKey(v) => d.auth.key = v,
+            Edit::ApiValue(v) => d.auth.value = v,
+            Edit::ApiLocation(v) => d.auth.location = v,
+            Edit::FollowRedirects(v) => d.options.follow_redirects = v,
+            Edit::VerifyTls(v) => d.options.verify_tls = v,
+        }
+        self.refresh_json_error();
+        self.draft != before
+    }
+
+    // CONTRACT
+    /// Put a picked file into its place (F03-AC5, F03-AC6).
+    pub fn file_picked(&mut self, target: FileTarget, path: PathBuf) {
+        match target {
+            FileTarget::Binary => self.draft.body.binary = Some(path),
+            FileTarget::FormField(index) => {
+                let form = &mut self.draft.body.form;
+                if index >= form.len() {
+                    form.push(FormField::default());
+                }
+                let last = form.len() - 1;
+                form[index.min(last)].file = Some(path);
+            }
+        }
+    }
+
+    fn refresh_json_error(&mut self) {
+        let body = &self.draft.body;
+        self.json_error = (body.mode == BodyMode::Raw
+            && body.language == RawLanguage::Json
+            && !body.raw.trim().is_empty())
+        .then(|| json::validate(&body.raw).err())
+        .flatten();
+    }
+
+    fn edit_row(&mut self, table: Table, index: usize, edit: RowEdit) {
+        let d = &mut self.draft;
+        match table {
+            Table::Params => {
+                if apply_row(&mut d.params, index, edit, |p| &mut p.row) {
+                    d.url = params::url_with_rows(&d.url, &d.params);
+                }
+            }
+            Table::Headers => {
+                apply_row(&mut d.headers, index, edit, |r| r);
+            }
+            Table::UrlEncoded => {
+                apply_row(&mut d.body.urlencoded, index, edit, |r| r);
+            }
+            Table::Form => {
+                if edit == RowEdit::ClearFile {
+                    if let Some(field) = d.body.form.get_mut(index) {
+                        field.file = None;
+                    }
+                } else {
+                    apply_row(&mut d.body.form, index, edit, |f| &mut f.row);
+                }
+            }
+        }
+    }
+
+    fn rows(&self, table: Table) -> Vec<KeyValue> {
+        let d = &self.draft;
+        match table {
+            Table::Params => d.params.iter().map(|p| p.row.clone()).collect(),
+            Table::Headers => d.headers.clone(),
+            Table::UrlEncoded => d.body.urlencoded.clone(),
+            Table::Form => d.body.form.iter().map(|f| f.row.clone()).collect(),
+        }
+    }
+
+    fn toggle_bulk(&mut self, table: Table) {
+        if let Some(pos) = self.bulk.iter().position(|(t, _)| *t == table) {
+            self.bulk.remove(pos);
+        } else {
+            let text = kv::to_bulk(&self.rows(table));
+            self.bulk.push((table, text));
+        }
+    }
+
+    fn apply_bulk(&mut self, table: Table, text: &str) {
+        let rows = kv::from_bulk(text, &self.rows(table));
+        let d = &mut self.draft;
+        match table {
+            Table::Params => {
+                d.params = rows
+                    .into_iter()
+                    .map(|row| Param {
+                        row,
+                        original: None,
+                    })
+                    .collect();
+                d.url = params::url_with_rows(&d.url, &d.params);
+            }
+            Table::Headers => d.headers = rows,
+            Table::UrlEncoded => d.body.urlencoded = rows,
+            Table::Form => {
+                // Files stay with their rows by position.
+                let files: Vec<Option<PathBuf>> =
+                    d.body.form.iter().map(|f| f.file.clone()).collect();
+                d.body.form = rows
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, row)| FormField {
+                        row,
+                        file: files.get(i).cloned().flatten(),
+                    })
+                    .collect();
+            }
+        }
+    }
+
+    // CONTRACT
+    /// Record a finished send, if it is this tab's current one.
+    pub fn finished(&mut self, id: u64, result: Arc<crate::Finished>) {
+        if !matches!(self.phase, Phase::Sending { id: current, .. } if current == id) {
+            return;
+        }
+        let result = Arc::try_unwrap(result).unwrap_or_else(|shared| (*shared).clone());
+        self.phase = match result {
+            crate::Finished::Received(received) => Phase::Received(received),
+            crate::Finished::Failed(text) => Phase::Failed(text),
+            crate::Finished::Cancelled => Phase::Cancelled,
+        };
+    }
+
+    // CONTRACT
+    /// Cancel the send in flight, if any.
+    pub fn cancel(&mut self) {
+        if let Phase::Sending { cancel, .. } = &self.phase {
+            cancel.cancel();
+            self.phase = Phase::Cancelled;
+        }
+    }
+
+    pub(crate) fn body_message(&mut self, message: body_view::Message) {
+        if let Phase::Received(received) = &mut self.phase {
+            received.view_mut().update(message);
+        }
+    }
+
+    pub(crate) fn select_format(&mut self, format: BodyFormat) {
+        if let Phase::Received(received) = &mut self.phase
+            && received.formats().contains(&format)
+        {
+            received.format = format;
+        }
+    }
+}
+
+/// Apply a row edit to `rows`, creating the row if `index` is the trailing
+/// blank row. Returns whether anything changed.
+fn apply_row<T: Default>(
+    rows: &mut Vec<T>,
+    index: usize,
+    edit: RowEdit,
+    row: impl Fn(&mut T) -> &mut KeyValue,
+) -> bool {
+    if index > rows.len() {
+        return false;
+    }
+    if edit == RowEdit::Remove {
+        if index < rows.len() {
+            rows.remove(index);
+            return true;
+        }
+        return false;
+    }
+    if index == rows.len() {
+        if matches!(&edit, RowEdit::Key(s) | RowEdit::Value(s) | RowEdit::Description(s) if s.is_empty())
+        {
+            return false;
+        }
+        rows.push(T::default());
+    }
+    let target = row(&mut rows[index]);
+    match edit {
+        RowEdit::Key(v) => target.key = v,
+        RowEdit::Value(v) => target.value = v,
+        RowEdit::Description(v) => target.description = v,
+        RowEdit::Enabled(v) => target.enabled = v,
+        RowEdit::Remove | RowEdit::ClearFile => return false,
+    }
+    true
+}

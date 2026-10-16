@@ -1,4 +1,4 @@
-//! User-facing errors from sending a request (F05-AC3, F05-AC6, F01-AC5).
+//! User-facing errors from sending a request (F05-AC3, F05-AC6, F01-AC5, F03-AC5).
 
 use std::time::Duration;
 
@@ -10,11 +10,27 @@ use crate::format;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SendError {
     InvalidUrl,
-    Dns { host: String },
-    ConnectionRefused { host: String, port: u16 },
-    Tls { detail: String },
-    Timeout { after: Duration },
-    Other { detail: String },
+    Dns {
+        host: String,
+    },
+    ConnectionRefused {
+        host: String,
+        port: u16,
+    },
+    Tls {
+        detail: String,
+    },
+    Timeout {
+        after: Duration,
+    },
+    /// A body file could not be read (F03-AC5, F03-AC6).
+    File {
+        path: String,
+        detail: String,
+    },
+    Other {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for SendError {
@@ -29,6 +45,7 @@ impl std::fmt::Display for SendError {
             Self::Timeout { after } => {
                 write!(f, "Request timed out after {} s", format::seconds(*after))
             }
+            Self::File { path, detail } => write!(f, "Could not read file {path}: {detail}"),
             Self::Other { detail } => write!(f, "Request failed: {detail}"),
         }
     }

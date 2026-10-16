@@ -1,11 +1,17 @@
 //! Ferry views and widgets.
 //!
-//! Views are pure functions of `ferry-app` state. No business logic lives here.
+//! Views are pure functions of `ferry-app` state, plus the widget state iced
+//! keeps outside views (`editors`). No business logic lives here.
 
 pub mod body_view;
+pub mod chrome;
+pub mod editors;
 pub mod probe;
+pub mod request;
+pub mod response;
 pub mod screen;
 pub mod shell;
+pub mod theme;
 
 /// The `iced` element type used across Ferry views.
 pub type Element<'a, Message> = iced::Element<'a, Message>;

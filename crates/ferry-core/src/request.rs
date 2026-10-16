@@ -1,11 +1,18 @@
-//! Requests as the user builds them (F01).
+//! Requests as the user builds them (F01) and as they are sent (F02..F05).
 
 use std::fmt;
+use std::path::PathBuf;
+
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
+
+use crate::response::Header;
 
 // CONTRACT
 /// An HTTP method. Standard methods have their own variants; anything else
 /// that is a valid RFC 9110 token is kept verbatim as `Custom`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum Method {
     #[default]
     Get,
@@ -89,8 +96,22 @@ fn strip_prefix_ignore_case<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
 }
 
 /// RFC 9110 `tchar`: the characters allowed in a token.
-fn is_tchar(c: char) -> bool {
+pub(crate) fn is_tchar(c: char) -> bool {
     c.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(c)
+}
+
+impl TryFrom<String> for Method {
+    type Error = MethodError;
+
+    fn try_from(name: String) -> Result<Self, MethodError> {
+        Self::parse(&name)
+    }
+}
+
+impl From<Method> for String {
+    fn from(method: Method) -> String {
+        method.as_str().to_owned()
+    }
 }
 
 impl fmt::Display for Method {
@@ -127,9 +148,78 @@ pub fn parse_url(input: &str) -> Result<url::Url, UrlError> {
 }
 
 // CONTRACT
+/// Per-request transport options (F05-AC4, F05-AC5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SendOptions {
+    /// Follow up to 10 redirects; otherwise show the 3xx response.
+    pub follow_redirects: bool,
+    /// Reject untrusted certificates.
+    pub verify_tls: bool,
+}
+
+impl Default for SendOptions {
+    fn default() -> Self {
+        Self {
+            follow_redirects: true,
+            verify_tls: true,
+        }
+    }
+}
+
+// CONTRACT
+/// One multipart field as sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Part {
+    pub name: String,
+    pub value: PartValue,
+}
+
+// CONTRACT
+/// A multipart field's content. Files are read when the request is sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PartValue {
+    Text(String),
+    File(PathBuf),
+}
+
+// CONTRACT
+/// A request body as sent.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum RequestBody {
+    #[default]
+    Empty,
+    Bytes(Bytes),
+    /// Sent as `multipart/form-data` with a generated boundary.
+    Multipart(Vec<Part>),
+    /// The file's bytes, read when the request is sent.
+    File(PathBuf),
+}
+
+// CONTRACT
 /// A request ready to send.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
     pub method: Method,
     pub url: url::Url,
+    /// Headers in order, duplicates included. The client adds `User-Agent`,
+    /// `Accept` and `Accept-Encoding` unless these override them.
+    pub headers: Vec<Header>,
+    pub body: RequestBody,
+    pub options: SendOptions,
+}
+
+impl Request {
+    // CONTRACT
+    /// A request with no headers or body and default options.
+    #[must_use]
+    pub fn new(method: Method, url: url::Url) -> Self {
+        Self {
+            method,
+            url,
+            headers: Vec::new(),
+            body: RequestBody::Empty,
+            options: SendOptions::default(),
+        }
+    }
 }

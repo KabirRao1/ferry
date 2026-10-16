@@ -132,3 +132,67 @@ fn as_u32(n: usize) -> u32 {
     // Callers only pass offsets within a body already checked against `MAX_LEN`.
     u32::try_from(n).unwrap_or(u32::MAX)
 }
+
+/// Bytes shown per hex-view line (F06-AC7).
+pub const HEX_WIDTH: usize = 16;
+
+// CONTRACT
+/// Number of hex-view lines for a body of `len` bytes (at least one).
+#[must_use]
+pub fn hex_line_count(len: usize) -> usize {
+    len.div_ceil(HEX_WIDTH).max(1)
+}
+
+// CONTRACT
+/// Hex-view line `line` of `body`: an 8-digit offset, 16 bytes in hex (with
+/// an extra space after the eighth), and the printable ASCII between bars.
+/// A short last line is padded so the ASCII column lines up. `None` past
+/// the end; an empty body has one empty line.
+#[must_use]
+pub fn hex_line(body: &[u8], line: usize) -> Option<String> {
+    use std::fmt::Write as _;
+    if line >= hex_line_count(body.len()) {
+        return None;
+    }
+    let start = line * HEX_WIDTH;
+    let chunk = body.get(start..body.len().min(start + HEX_WIDTH))?;
+    let mut out = String::with_capacity(78);
+    let _ = write!(out, "{start:08x} ");
+    for i in 0..HEX_WIDTH {
+        if i == 8 {
+            out.push(' ');
+        }
+        match chunk.get(i) {
+            Some(b) => {
+                let _ = write!(out, " {b:02x}");
+            }
+            None => out.push_str("   "),
+        }
+    }
+    out.push_str("  |");
+    out.extend(chunk.iter().map(|&b| {
+        if b.is_ascii_graphic() || b == b' ' {
+            char::from(b)
+        } else {
+            '.'
+        }
+    }));
+    out.push('|');
+    Some(out)
+}
+
+// CONTRACT
+/// Whether a body looks binary rather than text: a NUL byte, or invalid
+/// UTF-8, within its first 8 KiB (a character cut off at 8 KiB is fine).
+#[must_use]
+pub fn looks_binary(body: &[u8]) -> bool {
+    let head = &body[..body.len().min(8192)];
+    if memchr::memchr(0, head).is_some() {
+        return true;
+    }
+    match std::str::from_utf8(head) {
+        Ok(_) => false,
+        // `error_len() == None` means the input ended mid-character.
+        Err(e) => e.error_len().is_some() || head.len() == body.len(),
+    }
+}

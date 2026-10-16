@@ -18,6 +18,9 @@ ferry-app.workspace = true
 # CPU rendering by default: ~10x less memory and ~10x faster cold start than wgpu (ADR-0018).
 # `tokio`: effects (HTTP sends) run on the tokio runtime that reqwest needs.
 iced = { workspace = true, features = ["tiny-skia", "tokio", "x11", "wayland"] }
+# Native file dialogs for form-data and binary bodies (F03-AC5, F03-AC6).
+rfd = "0.17"
+tokio = { workspace = true, features = ["rt"] }
 
 [features]
 default = []

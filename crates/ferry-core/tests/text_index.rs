@@ -3,7 +3,7 @@
 
 use std::num::NonZeroU32;
 
-use ferry_core::text::{IndexError, LineIndex};
+use ferry_core::text::{IndexError, LineIndex, hex_line, hex_line_count, looks_binary};
 use proptest::prelude::*;
 
 fn wrap(n: u32) -> NonZeroU32 {
@@ -152,5 +152,61 @@ proptest! {
             let r = idx.line(body, i).unwrap();
             prop_assert!(std::str::from_utf8(&body[r]).is_ok());
         }
+    }
+}
+
+// --- F06-AC7 hex view -------------------------------------------------------
+
+#[test]
+fn f06_ac7_hex_lines_show_offset_bytes_and_ascii() {
+    let body: Vec<u8> = (0u8..20).chain(*b"Hi!").collect();
+    assert_eq!(hex_line_count(body.len()), 2);
+    assert_eq!(
+        hex_line(&body, 0).unwrap(),
+        "00000000  00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  |................|"
+    );
+    assert_eq!(
+        hex_line(&body, 1).unwrap(),
+        "00000010  10 11 12 13 48 69 21                              |....Hi!|"
+    );
+    assert_eq!(hex_line(&body, 2), None);
+}
+
+#[test]
+fn f06_ac7_empty_body_has_one_empty_hex_line() {
+    assert_eq!(hex_line_count(0), 1);
+    assert_eq!(
+        hex_line(b"", 0).unwrap(),
+        format!("00000000 {}  ||", " ".repeat(49))
+    );
+    assert_eq!(hex_line(b"", 1), None);
+}
+
+#[test]
+fn f06_ac7_binary_detection() {
+    assert!(!looks_binary(b""));
+    assert!(!looks_binary("plain text, é ✓\n".as_bytes()));
+    assert!(looks_binary(b"\x89PNG\r\n\x1a\n\0\0"));
+    assert!(looks_binary(b"caf\xe9"));
+    // A multi-byte character cut by the 8 KiB window is still text.
+    let mut long = vec![b'a'; 8191];
+    long.extend_from_slice("é tail".as_bytes());
+    assert!(!looks_binary(&long));
+    // But a body that itself ends mid-character is not.
+    assert!(looks_binary(&"é".as_bytes()[..1]));
+}
+
+proptest! {
+    #[test]
+    fn f06_ac7_prop_hex_lines_cover_body(body in proptest::collection::vec(any::<u8>(), 0..100)) {
+        let n = hex_line_count(body.len());
+        let mut decoded = Vec::new();
+        for i in 0..n {
+            let line = hex_line(&body, i).unwrap();
+            prop_assert_eq!(line.len(), 62 + body.len().saturating_sub(i * 16).min(16));
+            let hex = &line[10..58];
+            decoded.extend(hex.split_whitespace().map(|b| u8::from_str_radix(b, 16).unwrap()));
+        }
+        prop_assert_eq!(decoded, body);
     }
 }

@@ -1,150 +1,167 @@
-//! The request/response screen: a pure function of [`App`] state.
+//! The main window, laid out like Postman (F14): header, left sidebar,
+//! workbench (tab strip, request builder, response pane), footer.
 
-use ferry_app::{App, Message, Method, Phase, Received, ResponseTab, format};
-use iced::widget::text::{Shaping, Wrapping};
+use ferry_app::{App, SidebarSection};
 use iced::widget::{
-    button, center, column, container, pick_list, row, rule, scrollable, space, text, text_input,
+    button, center, column, container, mouse_area, opaque, responsive, row, space, stack, text,
 };
-use iced::{Alignment, Color, Fill, Font, Theme, color};
+use iced::{Alignment, Fill, FillPortion, Shrink, mouse};
 
-use crate::{Element, body_view};
+use crate::editors::Editors;
+use crate::shell::Message;
+use crate::{Element, chrome, request, response, theme};
 
-/// Id of the URL field, for focus and tests.
-pub const URL_INPUT: &str = "url";
-/// Placeholder shown in the empty URL field.
-pub const URL_PLACEHOLDER: &str = "https://api.example.com/users";
-/// Hint shown before the first send.
-pub const IDLE_HINT: &str = if cfg!(target_os = "macos") {
-    "Enter a URL and press Send (⌘+Enter)"
-} else {
-    "Enter a URL and press Send (Ctrl+Enter)"
-};
-pub const SENDING: &str = "Sending…";
-pub const CANCELLED: &str = "Request cancelled";
-pub const EMPTY_BODY: &str = "Empty body";
+/// UI text size.
+pub const TEXT: f32 = 13.0;
+/// Smaller text: labels, footer, hints.
+pub const SMALL: f32 = 12.0;
 
-/// The whole screen: request bar above the response panel.
+/// The whole window.
 #[must_use]
-pub fn view(app: &App) -> Element<'_, Message> {
-    column![
-        request_bar(app),
-        rule::horizontal(1),
-        container(response_panel(app)).padding(12).height(Fill),
-    ]
+pub fn view<'a>(
+    app: &'a App,
+    editors: &'a Editors,
+    resizing: bool,
+    save_error: Option<&'a str>,
+) -> Element<'a, Message> {
+    let mut body = row![];
+    if app.sidebar_open() {
+        body = body.push(chrome::sidebar(app.sidebar()));
+        body = body.push(vline());
+    }
+    body = body.push(workbench(app, editors, resizing));
+    let main = column![
+        chrome::header(),
+        hline(),
+        body.height(Fill),
+        hline(),
+        chrome::footer(app.sidebar_open(), save_error),
+    ];
+    let main = container(main)
+        .width(Fill)
+        .height(Fill)
+        .style(theme::app_background);
+    match app.confirm_close() {
+        Some(_) => stack![main, opaque(confirm_dialog())].into(),
+        None => main.into(),
+    }
+}
+
+fn workbench<'a>(app: &'a App, editors: &'a Editors, resizing: bool) -> Element<'a, Message> {
+    let split = app.split();
+    responsive(move |size| {
+        // Portions out of 1000 keep the split precise; truncation is fine.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let top = (split * 1000.0) as u16;
+        let request = container(request::view(app.tab(), editors))
+            .height(FillPortion(top.max(1)))
+            .width(Fill);
+        let response = container(response::view(app.tab()))
+            .height(FillPortion(1000u16.saturating_sub(top).max(1)))
+            .width(Fill);
+        let divider = mouse_area(container(space().height(4).width(Fill)).style(if resizing {
+            theme::divider_active
+        } else {
+            theme::divider
+        }))
+        .on_press(Message::ResizeStart)
+        .interaction(mouse::Interaction::ResizingVertically);
+        let tabs = chrome::tab_strip(app);
+        let content = column![tabs, hline(), request, divider, response].height(Fill);
+        let tabs_height = chrome::TAB_STRIP_HEIGHT + 1.0;
+        if resizing {
+            // Only while dragging the divider: track the pointer anywhere in
+            // the workbench, and stop on release.
+            let height = size.height;
+            mouse_area(content)
+                .on_release(Message::ResizeEnd)
+                .on_move(move |p| {
+                    let usable = (height - tabs_height).max(1.0);
+                    Message::ResizeMoved((p.y - tabs_height) / usable)
+                })
+                .interaction(mouse::Interaction::ResizingVertically)
+                .into()
+        } else {
+            content.into()
+        }
+    })
     .into()
 }
 
-fn request_bar(app: &App) -> Element<'_, Message> {
-    let method = pick_list(
-        Method::STANDARD,
-        Some(app.method().clone()),
-        Message::MethodSelected,
-    )
-    .width(110);
-    let url = text_input(URL_PLACEHOLDER, app.url())
-        .id(iced::widget::Id::new(URL_INPUT))
-        .on_input(Message::UrlChanged)
-        .on_submit(Message::SendPressed)
-        .padding(8)
-        .width(Fill);
-    let action = if app.is_sending() {
-        button(text("Cancel").align_x(Alignment::Center))
-            .on_press(Message::CancelPressed)
-            .style(button::secondary)
-    } else {
-        button(text("Send").align_x(Alignment::Center))
-            .on_press(Message::SendPressed)
-            .style(button::primary)
-    };
-    row![method, url, action.padding([8, 18])]
-        .spacing(8)
-        .padding(12)
-        .align_y(Alignment::Center)
-        .into()
-}
-
-fn response_panel(app: &App) -> Element<'_, Message> {
-    match app.phase() {
-        Phase::Idle => center(text(IDLE_HINT).style(text::secondary)).into(),
-        Phase::Sending { .. } => center(text(SENDING)).into(),
-        Phase::Cancelled => center(text(CANCELLED).style(text::secondary)).into(),
-        Phase::Failed(message) => center(text(message.as_str()).color(ERROR)).into(),
-        Phase::Received(received) => response(received, app.tab()),
-    }
-}
-
-fn response(received: &Received, tab: ResponseTab) -> Element<'_, Message> {
-    let r = &received.response;
-    let summary = row![
-        text(r.status_line()).color(status_color(r.status)),
-        text("·").style(text::secondary),
-        text(format::duration(r.elapsed)),
-        text("·").style(text::secondary),
-        text(format::size(r.body.len() as u64)),
-        space().width(Fill),
-        tab_button("Body".to_owned(), ResponseTab::Body, tab),
-        tab_button(
-            format!("Headers ({})", r.headers.len()),
-            ResponseTab::Headers,
-            tab
-        ),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
-    let content: Element<'_, Message> = match tab {
-        ResponseTab::Body if r.body.is_empty() => {
-            center(text(EMPTY_BODY).style(text::secondary)).into()
-        }
-        ResponseTab::Body => body_view::view(&received.body).map(Message::Body),
-        ResponseTab::Headers => headers(received),
-    };
-    column![summary, content].spacing(12).into()
-}
-
-fn tab_button(label: String, tab: ResponseTab, current: ResponseTab) -> Element<'static, Message> {
-    let style = if tab == current {
-        button::primary
-    } else {
-        button::text
-    };
-    button(text(label))
-        .on_press(Message::TabSelected(tab))
-        .style(style)
-        .into()
-}
-
-fn headers(received: &Received) -> Element<'_, Message> {
-    let rows = received.response.headers.iter().map(|h| {
-        row![
-            mono(h.name.as_str()).style(text::primary),
-            mono(h.value.as_str()),
+fn confirm_dialog() -> Element<'static, Message> {
+    let dialog = container(
+        column![
+            text("Discard unsaved changes?").size(16),
+            text("This request has changes that are not saved. Closing the tab discards them.")
+                .size(TEXT)
+                .style(theme::muted),
+            row![
+                space().width(Fill),
+                button(text("Cancel").size(TEXT))
+                    .on_press(Message::App(ferry_app::Message::ConfirmClose(false)))
+                    .padding([6, 14])
+                    .style(theme::secondary),
+                button(text("Discard").size(TEXT))
+                    .on_press(Message::App(ferry_app::Message::ConfirmClose(true)))
+                    .padding([6, 14])
+                    .style(theme::danger),
+            ]
+            .spacing(8),
         ]
         .spacing(12)
+        .width(380),
+    )
+    .padding(20)
+    .style(theme::dialog);
+    container(center(dialog))
+        .width(Fill)
+        .height(Fill)
+        .style(theme::scrim)
         .into()
-    });
-    scrollable(column(rows).spacing(4).width(Fill)).into()
 }
 
-fn mono<'a>(content: &'a str) -> iced::widget::Text<'a> {
-    text(content)
-        .font(Font::MONOSPACE)
-        .size(13)
-        .shaping(Shaping::Basic)
-        .wrapping(Wrapping::WordOrGlyph)
-}
-
-/// Error text. Bright enough for WCAG AA contrast on the dark background
-/// (iced's own dark-theme success/danger colors are too dim for text).
-const ERROR: Color = color!(0xf8_71_71);
-
-/// Status colors by class: 2xx green, 3xx blue, 4xx amber, 5xx red.
+/// A 1 px horizontal line.
 #[must_use]
-pub fn status_color(status: u16) -> Color {
-    match status {
-        200..=299 => color!(0x4a_de_80),
-        300..=399 => color!(0x60_a5_fa),
-        400..=499 => color!(0xfb_bf_24),
-        500..=599 => ERROR,
-        _ => Theme::Dark.palette().text,
+pub fn hline<'a>() -> Element<'a, Message> {
+    container(space().height(1).width(Fill))
+        .style(theme::divider)
+        .into()
+}
+
+/// A 1 px vertical line.
+#[must_use]
+pub fn vline<'a>() -> Element<'a, Message> {
+    container(space().width(1).height(Fill))
+        .style(theme::divider)
+        .into()
+}
+
+/// Muted explanatory text for features from later phases (F14-AC5).
+#[must_use]
+pub fn coming<'a>(title: &'a str, detail: &'a str) -> Element<'a, Message> {
+    center(
+        column![
+            text(title).size(14),
+            text(detail).size(TEXT).style(theme::muted).center(),
+        ]
+        .spacing(6)
+        .max_width(420)
+        .align_x(Alignment::Center),
+    )
+    .into()
+}
+
+/// Section labels used by the sidebar.
+#[must_use]
+pub fn section_label(section: SidebarSection) -> &'static str {
+    match section {
+        SidebarSection::Collections => "Collections",
+        SidebarSection::Environments => "Environments",
+        SidebarSection::History => "History",
     }
+}
+
+/// A container that never grows (for toolbars).
+pub fn bar<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+    container(content).height(Shrink).width(Fill).into()
 }

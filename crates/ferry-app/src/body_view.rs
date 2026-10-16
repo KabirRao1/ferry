@@ -1,11 +1,12 @@
-//! Scroll state for the virtualized response body viewer (F06-AC9, F06-AC10).
+//! Scroll state for the virtualized response body viewer (F06-AC7,
+//! F06-AC9, F06-AC10).
 
 use std::borrow::Cow;
 use std::num::NonZeroU32;
 
 use bytes::Bytes;
 
-use ferry_core::text::{IndexError, LineIndex};
+use ferry_core::text::{IndexError, LineIndex, hex_line, hex_line_count};
 
 // CONTRACT
 /// Messages the body viewer reacts to.
@@ -17,18 +18,26 @@ pub enum Message {
     ScrolledTo(usize),
 }
 
+#[derive(Debug, Clone)]
+enum Source {
+    /// Text split into display lines.
+    Text(LineIndex),
+    /// 16 bytes per line, rendered on demand.
+    Hex,
+}
+
 // CONTRACT
-/// A response body plus its display-line index and scroll position.
+/// A body plus its display lines and scroll position.
 #[derive(Debug, Clone)]
 pub struct BodyView {
     body: Bytes,
-    index: LineIndex,
+    source: Source,
     top: usize,
 }
 
 impl BodyView {
     // CONTRACT
-    /// Index `body` for display, wrapping lines at `wrap` bytes.
+    /// Index `body` as text, wrapping lines at `wrap` bytes.
     ///
     /// # Errors
     /// [`IndexError::TooLarge`] if the body cannot be indexed.
@@ -36,16 +45,30 @@ impl BodyView {
         let index = LineIndex::build(&body, wrap)?;
         Ok(Self {
             body,
-            index,
+            source: Source::Text(index),
             top: 0,
         })
+    }
+
+    // CONTRACT
+    /// Show `body` as a hex dump (F06-AC7). Costs nothing up front.
+    #[must_use]
+    pub fn hex(body: Bytes) -> Self {
+        Self {
+            body,
+            source: Source::Hex,
+            top: 0,
+        }
     }
 
     // CONTRACT
     /// Total display lines.
     #[must_use]
     pub fn line_count(&self) -> usize {
-        self.index.line_count()
+        match &self.source {
+            Source::Text(index) => index.line_count(),
+            Source::Hex => hex_line_count(self.body.len()),
+        }
     }
 
     // CONTRACT
@@ -72,9 +95,12 @@ impl BodyView {
     #[must_use]
     pub fn visible(&self, rows: usize) -> Vec<(usize, Cow<'_, str>)> {
         (self.top..self.top.saturating_add(rows))
-            .map_while(|n| {
-                let range = self.index.line(&self.body, n)?;
-                Some((n, String::from_utf8_lossy(&self.body[range])))
+            .map_while(|n| match &self.source {
+                Source::Text(index) => {
+                    let range = index.line(&self.body, n)?;
+                    Some((n, String::from_utf8_lossy(&self.body[range])))
+                }
+                Source::Hex => hex_line(&self.body, n).map(|line| (n, Cow::Owned(line))),
             })
             .collect()
     }

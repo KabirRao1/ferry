@@ -8,4 +8,5 @@ Connection refused by 127.0.0.1:8080
 TLS handshake failed: received corrupt message
 Request timed out after 30 s
 Request timed out after 0.2 s
+Could not read file C:\data\photo.png: The system cannot find the file specified. (os error 2)
 Request failed: connection reset

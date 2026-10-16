@@ -20,3 +20,17 @@ path = "fuzz_targets/line_index.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "json_pretty"
+path = "fuzz_targets/json_pretty.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "params_sync"
+path = "fuzz_targets/params_sync.rs"
+test = false
+doc = false
+bench = false

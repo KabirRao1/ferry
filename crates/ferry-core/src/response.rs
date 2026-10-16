@@ -5,8 +5,8 @@ use std::time::Duration;
 use bytes::Bytes;
 
 // CONTRACT
-/// One response header, in received order. Values that are not valid UTF-8
-/// are decoded lossily.
+/// One header, in order. Received values that are not valid UTF-8 are
+/// decoded lossily.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub name: String,
@@ -14,8 +14,22 @@ pub struct Header {
 }
 
 // CONTRACT
+/// Where the time went (F06-AC2). Phases that did not happen, such as DNS
+/// and connecting on a reused connection, are `None`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Timing {
+    pub dns: Option<Duration>,
+    /// TCP and TLS handshakes, after DNS.
+    pub connect: Option<Duration>,
+    /// From the connection being ready to the response headers arriving.
+    pub waiting: Duration,
+    /// From the response headers to the end of the body.
+    pub download: Duration,
+}
+
+// CONTRACT
 /// A complete response.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Response {
     pub status: u16,
     /// Canonical reason phrase for `status`, or empty if it has none.
@@ -24,6 +38,7 @@ pub struct Response {
     pub body: Bytes,
     /// Time from sending the request to receiving the whole body.
     pub elapsed: Duration,
+    pub timing: Timing,
 }
 
 impl Response {

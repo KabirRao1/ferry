@@ -12,8 +12,8 @@
 - **Offline and private.** No account, no sign-in, no telemetry.
 - **Plain-file collections** *(coming in Phase 3)*: requests saved as TOML files in a folder, so you can keep them in git and review them like code.
 
-> **Status: early development.** Ferry can send requests and show responses today.
-> Headers, bodies, auth, tabs, collections, scripts and more protocols are on the [roadmap](#roadmap).
+> **Status: early development.** Ferry sends requests with params, headers, auth and bodies, in tabs that survive restarts.
+> Collections, environments, scripts and more protocols are on the [roadmap](#roadmap).
 
 ## Quick start
 
@@ -48,12 +48,28 @@ cargo install --git https://github.com/KabirRao1/ferry ferry-ui
 
 ## Using Ferry
 
-1. Pick a method (GET, POST, …).
-2. Type a URL, for example `https://httpbin.org/json`.
-3. Press **Send**, **Enter** in the URL field, or **Ctrl+Enter** (**⌘+Enter** on macOS).
-4. Read the status, time and size. Switch between **Body** and **Headers**.
+The window is laid out like Postman: a sidebar on the left, request tabs across the top, the request builder above the response.
 
-While a request is in flight, **Send** becomes **Cancel**.
+1. Pick a method (GET, POST, …) or type your own, such as `PROPFIND`.
+2. Type a URL, for example `https://httpbin.org/json`. Query parameters show up in the **Params** table, and editing the table updates the URL.
+3. Add what the request needs:
+   - **Authorization**: Basic Auth, Bearer Token or API Key.
+   - **Headers**: your own rows, plus the headers Ferry adds (click "hidden" to see them).
+   - **Body**: form-data (text and files), x-www-form-urlencoded, raw (Text, JSON with validation and Beautify, XML, HTML, JavaScript) or a binary file.
+   - **Settings**: turn off following redirects or certificate verification.
+4. Press **Send**, **Enter** in the URL field, or **Ctrl+Enter** (**⌘+Enter** on macOS).
+5. Read the status, time (hover for the DNS / connect / waiting / download breakdown) and size. JSON is pretty-printed; switch to **Raw** or **Hex** at any time.
+
+Tables have **Bulk Edit** for pasting `key: value` lines. Open tabs, including unsent requests, are restored when you start Ferry again.
+
+| Shortcut | Action |
+|---|---|
+| Ctrl+Enter | Send |
+| Ctrl+T / Ctrl+W | New tab / close tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Ctrl+B | Show or hide the sidebar |
+
+On macOS, use ⌘ instead of Ctrl (Ctrl+Tab stays Ctrl).
 
 ## Roadmap
 
@@ -63,8 +79,8 @@ Ferry is heading for Postman's layout and every Postman feature that runs on you
 |---|---|---|
 | 0 | Foundations: CI, test harness, performance budgets | ✅ done |
 | 1 | Send a request, see status, headers and body | ✅ done |
-| 2 | Postman-style workbench, query params, headers, bodies, auth, tabs, redirect/TLS options, timing breakdown | in progress |
-| 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | planned |
+| 2 | Postman-style workbench, query params, headers, bodies, auth, tabs, redirect/TLS options, timing breakdown | ✅ done |
+| 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | next |
 | 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI | planned |
 | 5 | Import/export (Postman, cURL, OpenAPI, HAR), code snippets, OAuth and other auth, proxy and certificates, vault | planned |
 | 6 | GraphQL, WebSocket, Socket.IO, server-sent events, gRPC, MQTT | planned |

@@ -1,4 +1,5 @@
 //! F05-AC1/AC2/AC3/AC6, F06-AC1/AC4 against local servers only.
+//! Phase 2 sending (headers, bodies, options, timing) is in `phase2.rs`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code
 
 use std::collections::HashMap;
@@ -15,10 +16,7 @@ use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn request(m: Method, url: &str) -> Request {
-    Request {
-        method: m,
-        url: url.parse().unwrap(),
-    }
+    Request::new(m, url.parse().unwrap())
 }
 
 fn client() -> Client {
