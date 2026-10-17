@@ -19,11 +19,11 @@ From Phase 2 on, this plan replaces section 7 of `docs/kickoff.md` (ADR-0027). E
 | Phase | Features |
 |---|---|
 | 2 | F14 workbench layout; F01 params and custom methods; F02; F03; F04; F05 redirect and TLS options; F06-AC2 timing breakdown; F07 |
-| 3 | F08 variables; F09 collections; F10 history; F17 cookies; F18 console; F32 saved examples; F22 Preview and Visualize |
-| 4 | F15 scripts and tests; F16 Collection Runner and CLI |
+| 3 | F08 variables; F09 collections and the workspace; F10 history; F17 cookies; F18 console; F32 saved examples; F22 Preview and JSONPath filter; F06-AC8 search in body; F04-AC6 inherited auth; F07-AC7 linked tabs |
+| 4 | F15 scripts and tests; F16 Collection Runner and CLI; F22 Visualize (needs `pm.visualizer`) |
 | 5 | F11 import/export; F19 code snippets; F20 advanced auth and OAuth; F21 proxy and certificates; F31 vault; F30 OpenAPI and HAR import |
 | 6 | F23 GraphQL; F24 WebSocket and Socket.IO; F25 SSE; F26 gRPC; F27 MQTT |
-| 7 | F28 mock server; F29 docs generation; F33 find and replace; F12; F13; performance hardening; releases |
+| 7 | F28 mock server; F29 docs generation; F33 find and replace; F12; F13; F22 XPath and extra body views; performance hardening; releases |
 | Later | F30 spec editor; F34 Flows; F35 performance tests |
 
 ---
@@ -80,7 +80,7 @@ Scope: none, form-data (text and file parts), x-www-form-urlencoded, raw (Text, 
 | F03-AC6 | **Given** binary mode with a file, **then** the file's bytes are the body, with a content type guessed from its extension. Without a file, no body is sent. |
 
 ## F04 Auth
-Scope: No Auth, Basic, Bearer, API key (header or query). Inherit from parent arrives with F09. Other types are F20.
+Scope: No Auth, Basic, Bearer, API key (header or query), and Inherit from parent (Phase 3, with F09). Other types are F20.
 
 | AC | Criterion |
 |---|---|
@@ -89,6 +89,7 @@ Scope: No Auth, Basic, Bearer, API key (header or query). Inherit from parent ar
 | F04-AC3 | **Given** Bearer Token with a non-empty token, **then** `Authorization: Bearer <token>` is sent. An empty token sends nothing. |
 | F04-AC4 | **Given** API Key with a non-empty key, **then** `<key>: <value>` is sent as a header, or `key=value` is appended to the query (percent-encoded), as chosen. An empty key sends nothing. |
 | F04-AC5 | **Given** an enabled user header with the same name as the auth header, **then** the user header wins (F02-AC3). |
+| F04-AC6 | **Given** the type `Inherit auth from parent`, **then** the request uses the auth of its nearest parent folder or collection whose type is not Inherit (a collection's Inherit means No Auth). An unsaved request has no parent, so Inherit sends nothing. The Authorization tab names the source: `This request is using <type> from <parent kind> "<parent name>".` Requests created inside a collection start as Inherit; other new requests start as No Auth. |
 
 ## F05 Send
 
@@ -110,7 +111,7 @@ Phase 1 delivered AC1, AC6 and AC7. It also delivered parts of AC2 and AC3: Canc
 
 Scope: status, timing breakdown, size, headers, body as pretty JSON / raw / hex for binary, search in body, virtualized rendering for large bodies.
 
-Phase 1 delivered AC1 to AC5. AC9 to AC11 were built in the Phase 0 spike. Phase 2 adds AC2's breakdown, AC6 and AC7. AC8 (search) moves to Phase 3. The HTTP stack has no hook between the TCP and TLS handshakes, so the breakdown shows them together as "Connect" (ADR-0029).
+Phase 1 delivered AC1 to AC5. AC9 to AC11 were built in the Phase 0 spike. Phase 2 adds AC2's breakdown, AC6 and AC7. Phase 3 adds AC8 (search) and AC12. The HTTP stack has no hook between the TCP and TLS handshakes, so the breakdown shows them together as "Connect" (ADR-0029).
 
 | AC | Criterion |
 |---|---|
@@ -121,10 +122,11 @@ Phase 1 delivered AC1 to AC5. AC9 to AC11 were built in the Phase 0 spike. Phase
 | F06-AC5 | **Given** a text body, **then** it is shown as raw text. |
 | F06-AC6 | **Given** a JSON body (by `Content-Type` or by content), **then** the Pretty view is the default and shows it re-indented with 2 spaces, keeping key order and number spelling. Raw shows the bytes as received. Pretty-printing runs off the UI thread and needs memory proportional to the output only. |
 | F06-AC7 | **Given** a non-text (binary) body, **then** a hex view is the default: offset, 16 bytes in hex, and their printable ASCII. |
-| F06-AC8 | **Given** a body, **when** the user searches, **then** matches are highlighted and the user can step through them. |
+| F06-AC8 | **Given** a Pretty or Raw body, **when** the user opens the find bar (Ctrl/Cmd+F in the response pane, or its search button) and types, **then** the shown text is searched without regard to ASCII case, matches on visible lines are highlighted, the current one more strongly, and the bar shows `<i> of <n>` or `No results`. Enter or Down moves to the next match and Shift+Enter or Up to the previous one, wrapping around, and scrolls it into view. Counting stops at 10,000 matches (`10000+`). The search runs off the UI thread. Escape closes the bar and clears the highlights. |
 | F06-AC9 | **Given** a body, **then** it is shown as display lines: split on `\n`, with the `\r` of CRLF removed, and lines longer than the wrap width split without breaking a UTF-8 character. Invalid UTF-8 shows as U+FFFD. |
 | F06-AC10 | **Given** a 50 MB body, **when** the user scrolls (wheel or jump), **then** frame time stays under 16 ms (p95), and only visible lines are built as widgets. Indexing runs off the UI thread. |
 | F06-AC11 | **Given** a body larger than the viewer supports (4 GiB), **then** the viewer shows `body is <n> bytes; the viewer supports bodies up to 4294967295 bytes`. |
+| F06-AC12 | **Given** a response, **when** another response, a history entry or an example is shown in the tab, **then** the find bar, filter and preview state of the previous body are discarded. |
 
 ## F07 Tabs
 Scope: open, close, reorder, dirty indicator, restore on restart.
@@ -137,15 +139,57 @@ Scope: open, close, reorder, dirty indicator, restore on restart.
 | F07-AC4 | **Given** a tab whose request differs from its saved state (until F09, a new request), **then** it shows a dot. |
 | F07-AC5 | **Given** open tabs, **then** their requests, order and active tab are saved to the OS app-data directory within 2 s of a change and on exit, with an atomic write. **On** the next start, they are restored, without responses. An unreadable session file is renamed to `session.toml.bak` and a fresh tab opens. |
 | F07-AC6 | **Given** a send in flight in one tab, **when** the user switches tabs, **then** the response lands in the tab that sent it. |
+| F07-AC7 | **Given** a tab linked to a saved request (F09), **then** its title is the request's name, its dot compares the draft with the file's contents, and the session saves the link with any unsaved edits. **On** restart, a linked tab whose file still exists restores its edits and its link; one whose file is gone restores as an unsaved request. Environment, collection and example tabs are not restored. |
 
-## F08 Environments
-Scope: `{{var}}` interpolation in URL, headers, body and auth. Global and environment scopes. Unresolved variables are highlighted and block send with a clear error. A gitignored `*.local.toml` layer overrides values for secrets (ADR-0011).
+## F08 Variables and environments
+Scope: `{{var}}` interpolation in URL, params, headers, bodies and auth. Global, collection and environment scopes, with secrets kept out of committed files (ADR-0011, ADR-0040). Dynamic variables. Data and local scopes arrive with scripts and the runner (Phase 4).
 
-## F09 Collections
-Scope: folders; save, rename, duplicate, delete; one TOML file per request; atomic writes; external edits picked up via file watching. Folder order: by name, with an optional `_order.toml` (ADR-0013).
+| AC | Criterion |
+|---|---|
+| F08-AC1 | **Given** text containing `{{name}}`, where `name` is one or more characters other than `{`, `}`, CR and LF, **then** it is a variable reference. Anything else, such as `{{}}`, `{x}` or an unclosed `{{a`, is literal text. Substituted values are not scanned again for references, except as AC4 describes. |
+| F08-AC2 | **Given** variables in several scopes, **then** a name resolves to the first enabled definition in this order: the active environment, the request's collection, then globals. Disabled variables are ignored. |
+| F08-AC3 | **When** a request is sent, **then** references are replaced in the URL (so also its params), header names and values, the raw body, urlencoded and form-data names and text values, and all auth fields, before any validation (so `{{base}}/users` with `base = https://api.test` is a valid URL). The draft keeps its placeholders. |
+| F08-AC4 | **Given** a value that itself contains references, **then** they are resolved in turn, up to 10 levels. A reference that leads back to itself blocks sending with `Variable {{<name>}} refers to itself`. Deeper nesting blocks sending with `Variables are nested more than 10 levels deep at {{<name>}}`. |
+| F08-AC5 | **Given** a reference that no scope defines and that is not a dynamic variable, **when** the user sends, **then** nothing is sent and the request shows `Unresolved variable {{<name>}}`, or `Unresolved variables {{<a>}}, {{<b>}}` for several, each name once in order of first appearance. |
+| F08-AC6 | **Given** a request, **then** under the URL bar a strip lists each variable it references, once, in order: resolved ones with their value and scope (secret values shown as `••••••`), unresolved ones highlighted as errors with `not defined`. The strip is hidden when the request references none. |
+| F08-AC7 | **Given** `{{$guid}}` or `{{$randomUUID}}` (a random version 4 UUID), `{{$timestamp}}` (Unix seconds), `{{$isoTimestamp}}` (UTC, `2026-10-17T19:07:20.123Z`) or `{{$randomInt}}` (0 to 1000), **then** each occurrence gets its own value when the request is sent. A defined variable with the same name takes precedence. The clock and randomness are injected. |
+| F08-AC8 | **Given** the Environments sidebar, **then** it lists `Globals` and every environment by name. **When** the user creates (`New Environment`), renames, duplicates (`<name> Copy`) or deletes one (after `Delete environment "<name>"?`), **then** the workspace files change to match. Clicking an environment or Globals opens it in a workbench tab with a table of variables (enabled, variable, value, secret), a dot while it has unsaved changes, and Save (Ctrl/Cmd+S). |
+| F08-AC9 | **Given** the tab strip's environment selector, **then** it lists `No environment` and every environment. The choice applies to every tab, is saved with the session by file name, and falls back to `No environment` if that file is gone. |
+| F08-AC10 | **Given** an environment saved by Ferry, **then** it is `environments/<file>.toml` with `name` and `[[variables]]` (`key`, `value`, `enabled`, `secret`), and globals are `globals.toml` with `[[variables]]`. A secret variable's value is written only to the sibling `<file>.local.toml`, never to the main file. **When** loading, values in `<file>.local.toml` replace the main file's value for the same key, and keys only in the local file are added. The workspace `.gitignore` lists `*.local.toml` (F09-AC1). |
+| F08-AC11 | **Given** an environment file that cannot be read or parsed, **then** it is listed with `Could not read <path>: <reason>`, cannot be selected or edited, and is never overwritten. Other environments are unaffected. |
+
+## F09 Collections and the workspace
+Scope: a workspace folder of plain TOML files; collections with folders; save, rename, duplicate, delete and move; one TOML file per request; atomic writes; external edits picked up via file watching; collection and folder settings (description, auth, collection variables). Order by name with an optional `_order.toml` (ADR-0013, ADR-0037).
+
+| AC | Criterion |
+|---|---|
+| F09-AC1 | **Given** startup, **then** the workspace folder is `FERRY_WORKSPACE` if set, else the folder last chosen with `Open Workspace…` (saved in the session), else `<data dir>/workspace`. It holds `collections/`, `environments/` and `globals.toml`. **When** Ferry creates a workspace or writes into one, **then** its `.gitignore` contains a `*.local.toml` line (added if missing, other lines kept). |
+| F09-AC2 | **Given** a collection, **then** it is a folder `collections/<name>/` with `collection.toml` (`name`, `description`, `auth`, `[[variables]]`). A folder inside it is a directory with an optional `folder.toml` (`name`, `description`, `auth`). A request is `<name>.toml` holding `name`, the request fields of F01 to F05, and its examples (F32). Fields at their default values are omitted. Loading what Ferry saved gives back the same collection (property test), and the format is fixed by snapshot tests. A missing `name` falls back to the file or folder name. |
+| F09-AC3 | **Given** the Collections sidebar, **then** collections are listed by name, each expandable to its folders and requests. Inside a folder, items sort by name, case-insensitively, unless the folder has `_order.toml` (`order = ["<file or folder name>", …]`): listed items come first in that order, the rest follow by name. Requests show their method and name. |
+| F09-AC4 | **When** the user clicks a request in the sidebar, **then** the tab already linked to it becomes active, or else a new tab opens linked to it. |
+| F09-AC5 | **When** the user saves (Save button or Ctrl/Cmd+S) a linked request tab, **then** its file is rewritten atomically and the dot clears. **When** the tab is not linked, **then** a Save dialog asks for a name (default: the tab title) and a collection or folder, offers `New Collection` when there are none, and on Save writes the file and links the tab. An empty name shows `Enter a name`. |
+| F09-AC6 | **When** the user creates a collection (`New Collection` in the sidebar), a folder or a request (a collection's or folder's `…` menu), **then** the directory or file is created with the name `New Collection`, `New Folder` or `New Request` (made unique as in AC8), and a new request opens in a tab linked to its file. |
+| F09-AC7 | **When** the user renames an item, **then** its file or directory and its `name` change together, and linked tabs follow it. **When** the user duplicates an item, **then** a copy named `<name> Copy` is created next to it (folders recursively). **When** the user deletes an item and confirms `Delete "<name>"?`, **then** its file or directory is removed, and tabs linked to it stay open as unsaved requests. |
+| F09-AC8 | **Given** a name, **then** its file or directory name replaces `<>:"/\|?*` and control characters with `_`, trims trailing dots and spaces, adds `_` after Windows reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, with or without an extension), uses `Untitled` when nothing is left, and keeps at most 100 characters. A name that collides case-insensitively with a sibling gets ` (2)`, ` (3)`, and so on. |
+| F09-AC9 | **When** the user drags an item onto a request, **then** it moves just before that request, in that request's folder; dropped onto a folder or collection, it moves to the end of it. The affected folders' `_order.toml` is rewritten. A folder cannot move into itself. |
+| F09-AC10 | **Given** a file in the workspace changed by another program, **then** within 1 s the sidebar shows the change. A linked tab without unsaved changes reloads the new contents; one with unsaved changes keeps them and its dot. A linked tab whose file was deleted becomes an unsaved request. Ferry's own writes do not disturb tabs. |
+| F09-AC11 | **When** the user opens a collection or folder (its name in the sidebar, or `…` > Settings), **then** a tab shows its Overview (name and description), Authorization (F04 types, including Inherit for folders) and, for collections, Variables, with a dot while unsaved and Save. Collection variables take part in F08-AC2 for requests inside the collection. |
+| F09-AC12 | **Given** a request, folder or collection file that cannot be read or parsed, **then** the sidebar shows it with `Could not read <path>: <reason>`, opening it does nothing, and Ferry never overwrites or deletes it except on an explicit Delete. |
+| F09-AC13 | **Given** the header's search field, **when** the user types, **then** the sidebar shows the saved requests whose name or URL contains the text, ignoring case, with their collection and folder; clicking one opens it as in AC4. Clearing the field restores the sidebar. |
+| F09-AC14 | **When** the user chooses `Open Workspace…` and picks a folder, **then** Ferry switches to that workspace: the sidebar reloads, linked tabs become unsaved requests, and the folder is remembered (AC1). |
+| F09-AC15 | **Given** a workspace operation that fails (permission denied, disk full, a name taken by another program), **then** the files are left as they were where possible, and the footer shows `Could not <action>: <reason>`. |
 
 ## F10 History
-Scope: last N requests (default 100), searchable, one-click replay. Stored in the OS app-data directory (ADR-0012).
+Scope: last N requests (default 100), searchable, one-click replay. Stored in the OS app-data directory (ADR-0012, ADR-0039).
+
+| AC | Criterion |
+|---|---|
+| F10-AC1 | **When** a send gets a response or fails, **then** a history entry records the time, the method, the URL as sent (variables resolved), the request as edited (placeholders kept), and the status, time and size, or the error text. Cancelled sends are not recorded. |
+| F10-AC2 | **Given** more than 100 entries, **then** the oldest are dropped. Response bodies are kept up to 1 MB; longer ones are truncated and marked. |
+| F10-AC3 | **Given** the History sidebar, **then** entries are listed newest first, grouped under `Today`, `Yesterday` or the date (`October 15`, or `October 15, 2025` for other years) in local time, each showing the method and URL. A search field filters them by URL or method, ignoring case. |
+| F10-AC4 | **When** the user clicks an entry, **then** a new unsaved tab opens with its request and its recorded response (status, headers, time, size and body). A truncated body shows `Body truncated to 1 MB in history`. |
+| F10-AC5 | **When** the user deletes an entry, **then** it disappears. **When** the user clears all history and confirms `Clear all history?`, **then** every entry is removed. |
+| F10-AC6 | **Given** history, **then** it is stored in the data directory as `history/history.toml` (entries) and `history/bodies/<id>` (body bytes), written atomically, and survives restarts. Bodies of dropped entries are deleted. An unreadable `history.toml` is renamed to `history.toml.bak` and history starts empty. |
 
 ## F11 Import/export
 Scope: curl import and export; Postman Collection v2.1 import (documented subset).
@@ -165,7 +209,8 @@ Scope: Postman's layout. Header with search and settings; left sidebar with Coll
 | F14-AC2 | **Given** the request builder, **then** it has the tabs Params, Authorization, Headers, Body, Scripts and Settings. Params and Headers show the count of enabled rows (Headers including auto headers); Authorization and Body show a dot when set. |
 | F14-AC3 | **Given** the response pane, **then** it has the tabs Body, Cookies, Headers (with count) and Test Results, and on the right the status, time and size. |
 | F14-AC4 | **When** the user toggles the sidebar (footer button or Ctrl/Cmd+B), **then** it collapses or expands. **When** the user drags the divider between request and response, **then** the split changes, between 20% and 80% of the height. Both are saved with the session (F07-AC5). |
-| F14-AC5 | **Given** a feature from a later phase (collections, environments, history, scripts, cookies, console, runner, test results), **then** its place in the layout says what it will do and that it is not available yet. It never looks clickable without an effect. |
+| F14-AC5 | **Given** a feature from a later phase (scripts, runner, test results and, before Phase 3, collections, environments, history, cookies and console), **then** its place in the layout says what it will do and that it is not available yet. It never looks clickable without an effect. |
+| F14-AC6 | **Given** a request tab, **then** above the URL bar it shows the request's location (`<collection> / <folder> / <name>` for a linked request, `Untitled Request` or the URL otherwise) and a Save button. Workbench tabs for environments, collections, folders and examples show their kind in the tab strip. |
 
 ## F15 Scripts and tests
 Scope: pre-request and post-response JavaScript per request, folder and collection, run in an embedded engine with the `pm` API (`pm.test`, `pm.expect`, `pm.environment`, `pm.variables`, `pm.request`, `pm.response`, `pm.sendRequest`, `console`). Test Results tab with pass, fail and skip filters. Scripts have no file system or process access, and they time out.
@@ -174,10 +219,26 @@ Scope: pre-request and post-response JavaScript per request, folder and collecti
 Scope: run a collection or folder in order with iterations, delay and CSV/JSON data files; live results; export a report. `ferry-cli run` does the same headless for CI, with a non-zero exit code on test failures.
 
 ## F17 Cookies
-Scope: a per-workspace cookie jar used on send, a Cookies tab in the response pane, and a cookie manager to add, edit and delete cookies by domain. The jar can be turned off per request.
+Scope: a cookie jar used on send, a Cookies tab in the response pane, and a cookie manager to add, edit and delete cookies by domain. The jar can be turned off per request (ADR-0038).
+
+| AC | Criterion |
+|---|---|
+| F17-AC1 | **Given** a response, including each redirect hop, **then** its `Set-Cookie` headers are stored as RFC 6265 describes: host-only without a `Domain` attribute; the default path from the request path without `Path`; `Max-Age` over `Expires`; an expiry in the past deletes the cookie; `Secure` and `HttpOnly` kept. A `Domain` that does not domain-match the request host, or that is a single label such as `com` (unless it equals the host), is ignored, as is a header without `name=`. |
+| F17-AC2 | **When** a request is sent with the jar on, **then** every unexpired cookie whose domain and path match the URL is sent in one `Cookie` header, `Secure` ones only over https, longer paths first and then older ones first. A user `Cookie` header is sent with the jar's cookies for the request's own URL appended to it. |
+| F17-AC3 | **Given** a request's Settings tab, **then** `Send and store cookies` (on by default) controls the jar: when off, the jar is neither read nor written for that request. |
+| F17-AC4 | **Given** a response, **then** the Cookies tab, labelled `Cookies (<n>)`, lists the cookies the final response set: name, value, domain, path, expires (`Session` if none), HttpOnly and Secure. |
+| F17-AC5 | **When** the user opens the cookie manager (footer Cookies, or `Cookies` under Send), **then** a dialog lists the jar's domains and each domain's cookies. The user can add a domain, add or edit a cookie as `Set-Cookie` text (`name=value; Path=/; Expires=…`), delete a cookie, and delete all of a domain's cookies. Text without `name=` shows `Enter a cookie as name=value; attributes`. |
+| F17-AC6 | **Given** the jar, **then** it is saved to `cookies.toml` in the data directory, atomically, within 2 s of a change and on exit, and restored on start without the cookies that have expired. An unreadable file is renamed to `cookies.toml.bak` and the jar starts empty. |
 
 ## F18 Console
-Scope: a log of every request as sent (after variables and scripts) and every response, plus script `console` output. Filter and clear.
+Scope: a log of every request as sent (after variables and scripts) and every response, plus script `console` output (Phase 4). Filter and clear.
+
+| AC | Criterion |
+|---|---|
+| F18-AC1 | **When** a request is sent, **then** the console logs it as sent: method, URL (variables resolved), headers including the auto-generated ones and the jar's `Cookie`, and the body (up to 10 KB of text, otherwise a description such as `multipart/form-data, 2 fields` or `<n> bytes`). **When** it ends, **then** the entry adds the status, time, size and response headers and body (up to 10 KB of text), or the error text, or `Request cancelled`. |
+| F18-AC2 | **When** the user presses Console in the footer, **then** a console panel opens or closes under the workbench. Entries show one line each (`GET https://… 200 · 85 ms`); clicking one expands its details. |
+| F18-AC3 | **Given** the console, **then** a text filter keeps the entries whose method or URL contain the text (ignoring case), an `Errors only` switch keeps failed sends and responses with status 400 or above, and Clear empties it. |
+| F18-AC4 | **Given** more than 500 entries, **then** the oldest are dropped. The console is not saved across restarts. |
 
 ## F19 Code snippets
 Scope: generate code for the current request: cURL, HTTPie, Python requests, JavaScript fetch, Node axios, Go, Rust reqwest, Java, C#, PHP, Ruby, Swift. Pure functions in `ferry-core`.
@@ -190,6 +251,15 @@ Scope: HTTP version choice, proxy (system, custom, bypass list), client certific
 
 ## F22 Response Preview and Visualize
 Scope: Preview renders HTML, images, audio and video; Visualize renders HTML templates set by scripts (`pm.visualizer.set`). Both use an embedded system web view created on demand (ADR-0028). Also a JSONPath filter for JSON and XPath for XML and HTML, and body views for XML, HTML, YAML, JavaScript, Markdown and Base64.
+
+Phase 3 delivers Preview and the JSONPath filter. Visualize needs scripts and moves to Phase 4; XPath and the extra body views move to Phase 7 (ADR-0041).
+
+| AC | Criterion |
+|---|---|
+| F22-AC1 | **Given** a response whose `Content-Type` is HTML, an image, audio, video or PDF, **then** the body formats include `Preview`. On Windows and macOS, Preview shows the body rendered by an embedded system web view that fills the body area. The web view is created when Preview is shown and destroyed when the user leaves it (another format, response tab, workbench tab or response). |
+| F22-AC2 | **Given** a preview, **then** the body is served from memory with its `Content-Type`, the page cannot open windows or navigate away, and it has no bridge to Ferry. |
+| F22-AC3 | **Given** Linux, or a web view that fails to start, **then** Preview shows `Preview is not available here` with `Open in Browser`, which writes the body to a temporary file with a matching extension and opens it with the system's default application. `Open in Browser` is also offered on every platform. |
+| F22-AC4 | **Given** a JSON body up to 10 MB, **then** the Pretty view has a filter field. A JSONPath expression (RFC 9535) shows its results as a pretty-printed JSON array; an invalid one shows `Invalid JSONPath: <reason>`; clearing it shows the body again. Filtering runs off the UI thread. Larger bodies show `Filtering is available for bodies up to 10 MB`. |
 
 ## F23 GraphQL
 Scope: query and variables editors, schema introspection, autocomplete and validation against the schema.
@@ -220,6 +290,13 @@ Scope: secrets stored in the OS keychain, referenced as `{{vault:name}}`, never 
 
 ## F32 Saved examples
 Scope: save a response as a named example of its request; view and edit examples.
+
+| AC | Criterion |
+|---|---|
+| F32-AC1 | **Given** a response in a tab linked to a saved request, **when** the user chooses `Save as Example`, **then** an example holding the request as edited and the response's status, headers and body is added to the request's file, named after the request (with ` (2)`, ` (3)` for repeats). In an unlinked tab the action is disabled with `Save the request to a collection first`. |
+| F32-AC2 | **Given** an example, **then** a UTF-8 body is stored as text and any other body as base64 (`body_encoding = "base64"`), and loading gives back the same bytes. |
+| F32-AC3 | **Given** a request with examples, **then** the sidebar lists them under it. Clicking one opens an example tab showing its request and response, where the name, status code, response headers and body text are editable, with a dot while unsaved and Save. |
+| F32-AC4 | **When** the user renames, duplicates or deletes an example from the sidebar, **then** the request's file changes to match. |
 
 ## F33 Find and replace
 Scope: search and replace across requests, collections and environments.

@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** 2 (Postman-style workbench) complete. Waiting for user review before Phase 3.
+**Phase:** 3 in progress (user approved 2026-10-17).
 **Next step:** Phase 3: F08 variables and environments, F09 collections, F10 history, F17 cookies, F18 console, F32 saved examples, F22 Preview and Visualize (see `docs/SPEC.md#phases`).
 
 ## Phase 2 results
