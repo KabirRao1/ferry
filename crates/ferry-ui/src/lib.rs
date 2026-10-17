@@ -5,12 +5,15 @@
 
 pub mod body_view;
 pub mod chrome;
+pub mod dialogs;
+pub mod docs;
 pub mod editors;
 pub mod probe;
 pub mod request;
 pub mod response;
 pub mod screen;
 pub mod shell;
+pub mod sidebar;
 pub mod theme;
 
 /// The `iced` element type used across Ferry views.

@@ -153,8 +153,10 @@ pub fn parse_url(input: &str) -> Result<url::Url, UrlError> {
 #[serde(default)]
 pub struct SendOptions {
     /// Follow up to 10 redirects; otherwise show the 3xx response.
+    #[serde(skip_serializing_if = "crate::is_true")]
     pub follow_redirects: bool,
     /// Reject untrusted certificates.
+    #[serde(skip_serializing_if = "crate::is_true")]
     pub verify_tls: bool,
 }
 

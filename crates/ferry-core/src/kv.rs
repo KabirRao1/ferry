@@ -11,7 +11,9 @@ pub struct KeyValue {
     pub key: String,
     pub value: String,
     /// Shown in the table only; never sent.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
+    #[serde(skip_serializing_if = "crate::is_true")]
     pub enabled: bool,
 }
 

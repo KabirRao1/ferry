@@ -1,25 +1,32 @@
-//! Window chrome: header, sidebar, tab strip and footer (F07, F14).
+//! Window chrome: header, tab strip and footer (F07, F08-AC9, F09-AC13,
+//! F09-AC14, F14).
 
-use ferry_app::{App, Message as AppMessage, SidebarSection, Tab};
+use std::fmt;
+
+use ferry_app::{App, Doc, ItemKind, Message as AppMessage, Tab};
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    button, column, container, mouse_area, row, scrollable, space, text, text_input, tooltip,
+    button, column, container, mouse_area, pick_list, row, scrollable, space, text, text_input,
+    tooltip,
 };
 use iced::{Alignment, Fill, Font, font};
 
-use crate::screen::{self, SMALL, TEXT, coming};
+use crate::screen::{SMALL, TEXT};
 use crate::shell::Message;
 use crate::{Element, theme};
 
 /// Height of the workbench tab strip, in logical pixels.
 pub const TAB_STRIP_HEIGHT: f32 = 36.0;
 const TAB_WIDTH: f32 = 200.0;
-const SIDEBAR_WIDTH: f32 = 280.0;
 
-/// Placeholder of the (not yet available) search field.
-pub const SEARCH_PLACEHOLDER: &str = "Search Ferry";
+/// Placeholder of the header search field (F09-AC13).
+pub const SEARCH_PLACEHOLDER: &str = "Search saved requests";
+/// Id of the search field, for focus.
+pub const SEARCH_INPUT: &str = "search";
 /// Title of tabs without a URL.
 pub const UNTITLED: &str = "Untitled Request";
+/// The environment selector's empty choice (F08-AC9).
+pub const NO_ENVIRONMENT: &str = "No environment";
 
 fn app(message: AppMessage) -> Message {
     Message::App(message)
@@ -32,20 +39,44 @@ fn bold() -> Font {
     }
 }
 
-/// Top bar: name, search and settings.
+/// Top bar: name and workspace, search, settings.
 #[must_use]
-pub fn header<'a>() -> Element<'a, Message> {
-    let search = tooltip(
-        text_input(SEARCH_PLACEHOLDER, "")
-            .size(TEXT)
+pub fn header(state: &App) -> Element<'_, Message> {
+    let folder = state
+        .workspace_root()
+        .and_then(|p| p.file_name())
+        .map_or_else(
+            || "Workspace".to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+    let workspace = tooltip(
+        button(text(format!("{folder} ▾")).size(TEXT))
+            .on_press(app(AppMessage::OpenWorkspace))
             .padding([5, 10])
-            .width(360)
-            .style(theme::input),
-        container(text("Search arrives with collections in Phase 3").size(SMALL))
+            .style(theme::flat(false)),
+        container(text("Open Workspace… (a folder of collections and environments)").size(SMALL))
             .padding(6)
             .style(theme::dialog),
         tooltip::Position::Bottom,
     );
+    let mut search = row![
+        text_input(SEARCH_PLACEHOLDER, state.search())
+            .id(iced::widget::Id::new(SEARCH_INPUT))
+            .on_input(|s| app(AppMessage::Search(s)))
+            .size(TEXT)
+            .padding([5, 10])
+            .width(360)
+            .style(theme::input),
+    ]
+    .align_y(Alignment::Center);
+    if !state.search().is_empty() {
+        search = search.push(
+            button(text("×").size(14))
+                .on_press(app(AppMessage::Search(String::new())))
+                .padding([0, 8])
+                .style(theme::flat(false)),
+        );
+    }
     let settings = tooltip(
         button(text("Settings").size(TEXT))
             .padding([5, 10])
@@ -58,11 +89,13 @@ pub fn header<'a>() -> Element<'a, Message> {
     container(
         row![
             text("Ferry").size(15).font(bold()).style(theme::accent),
+            workspace,
             space().width(Fill),
             search,
             space().width(Fill),
             settings,
         ]
+        .spacing(6)
         .align_y(Alignment::Center)
         .padding([0, 12]),
     )
@@ -72,57 +105,45 @@ pub fn header<'a>() -> Element<'a, Message> {
     .into()
 }
 
-/// Left sidebar: section rail plus the selected section (F14-AC1, AC5).
-#[must_use]
-pub fn sidebar<'a>(selected: SidebarSection) -> Element<'a, Message> {
-    let rail = column(SidebarSection::ALL.into_iter().map(|section| {
-        button(text(screen::section_label(section)).size(SMALL))
-            .on_press(app(AppMessage::SidebarSection(section)))
-            .width(Fill)
-            .padding([8, 10])
-            .style(theme::flat(section == selected))
-            .into()
-    }))
-    .spacing(2)
-    .padding(6)
-    .width(108);
-    let (title, detail) = match selected {
-        SidebarSection::Collections => (
-            "No collections yet",
-            "Collections arrive in Phase 3: save requests into folders, stored as plain files you can keep in git.",
-        ),
-        SidebarSection::Environments => (
-            "No environments yet",
-            "Environments arrive in Phase 3: switch variables like {{base_url}} between dev, staging and production.",
-        ),
-        SidebarSection::History => (
-            "No history yet",
-            "History arrives in Phase 3: every request you send, searchable and one click to replay.",
-        ),
-    };
-    let panel = column![
-        container(
-            text(screen::section_label(selected))
-                .size(TEXT)
-                .font(bold())
-        )
-        .padding([10, 12]),
-        screen::hline(),
-        container(coming(title, detail)).padding(16),
-    ]
-    .width(Fill);
-    container(row![rail, screen::vline(), panel])
-        .width(SIDEBAR_WIDTH)
-        .height(Fill)
-        .style(theme::surface)
-        .into()
+/// One entry of the environment selector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvChoice {
+    pub path: Option<String>,
+    pub name: String,
 }
 
-/// Workbench tabs, + and the environment selector (F07, F14-AC1).
+impl fmt::Display for EnvChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
+/// The selector's choices: `No environment`, then every readable one.
 #[must_use]
-pub fn tab_strip(app_state: &App) -> Element<'_, Message> {
-    let active = app_state.tab().id;
-    let tabs = row(app_state
+pub fn env_choices(state: &App) -> Vec<EnvChoice> {
+    let mut choices = vec![EnvChoice {
+        path: None,
+        name: NO_ENVIRONMENT.to_owned(),
+    }];
+    choices.extend(
+        state
+            .workspace()
+            .environments
+            .iter()
+            .filter(|e| e.file.is_ok())
+            .map(|e| EnvChoice {
+                path: Some(e.path.clone()),
+                name: e.name().to_owned(),
+            }),
+    );
+    choices
+}
+
+/// Workbench tabs, + and the environment selector (F07, F08-AC9, F14-AC1).
+#[must_use]
+pub fn tab_strip(state: &App) -> Element<'_, Message> {
+    let active = state.tab().id;
+    let tabs = row(state
         .tabs()
         .iter()
         .map(|tab| workbench_tab(tab, tab.id == active)))
@@ -131,15 +152,17 @@ pub fn tab_strip(app_state: &App) -> Element<'_, Message> {
         .on_press(app(AppMessage::NewTab))
         .padding([4, 12])
         .style(theme::flat(false));
-    let environment = tooltip(
-        button(text("No environment").size(SMALL))
-            .padding([5, 10])
-            .style(theme::secondary),
-        container(text("Environments arrive in Phase 3").size(SMALL))
-            .padding(6)
-            .style(theme::dialog),
-        tooltip::Position::Bottom,
-    );
+    let choices = env_choices(state);
+    let selected = choices
+        .iter()
+        .find(|c| c.path.as_deref() == state.environment())
+        .cloned();
+    let environment = pick_list(choices, selected, |c: EnvChoice| {
+        app(AppMessage::SelectEnvironment(c.path))
+    })
+    .text_size(SMALL)
+    .padding([4, 10])
+    .width(190);
     container(
         row![
             scrollable(row![tabs, new_tab].align_y(Alignment::Center))
@@ -156,8 +179,22 @@ pub fn tab_strip(app_state: &App) -> Element<'_, Message> {
     .into()
 }
 
+/// The small label before a tab's title: its method, or what it holds.
+#[must_use]
+pub fn tab_badge(tab: &Tab) -> (String, iced::Color) {
+    match &tab.doc {
+        Doc::Request => {
+            let method = tab.draft.method.as_str();
+            (short_method(method).to_owned(), theme::method_color(method))
+        }
+        Doc::Environment(_) => ("ENV".to_owned(), theme::INFO),
+        Doc::Container(c) if c.kind == ItemKind::Collection => ("COL".to_owned(), theme::ACCENT),
+        Doc::Container(_) => ("DIR".to_owned(), theme::ACCENT),
+        Doc::Example(_) => ("EX".to_owned(), theme::MUTED),
+    }
+}
+
 fn workbench_tab(tab: &Tab, active: bool) -> Element<'_, Message> {
-    let method = tab.draft.method.as_str();
     let close: Element<'_, Message> = if tab.is_dirty() && !active {
         text("●").size(10).style(theme::accent).into()
     } else {
@@ -172,11 +209,9 @@ fn workbench_tab(tab: &Tab, active: bool) -> Element<'_, Message> {
     } else {
         space().width(0).into()
     };
+    let (badge, color) = tab_badge(tab);
     let label = row![
-        text(short_method(method))
-            .size(10)
-            .font(bold())
-            .color(theme::method_color(method)),
+        text(badge).size(10).font(bold()).color(color),
         container(text(tab.title()).size(SMALL).wrapping(Wrapping::None),)
             .width(Fill)
             .clip(true),
@@ -222,11 +257,11 @@ pub fn short_method(method: &str) -> &str {
     }
 }
 
-/// Bottom bar: sidebar toggle, Console, Cookies, Runner, version.
+/// Bottom bar: sidebar toggle, Console, errors, Cookies, Runner, version.
 #[must_use]
-pub fn footer<'a>(sidebar_open: bool, save_error: Option<&'a str>) -> Element<'a, Message> {
+pub fn footer<'a>(state: &'a App, save_error: Option<&'a str>) -> Element<'a, Message> {
     let toggle = button(
-        text(if sidebar_open {
+        text(if state.sidebar_open() {
             "Hide sidebar"
         } else {
             "Show sidebar"
@@ -248,18 +283,28 @@ pub fn footer<'a>(sidebar_open: bool, save_error: Option<&'a str>) -> Element<'a
         )
         .into()
     };
-    let status: Element<'a, Message> = match save_error {
-        Some(error) => text(error).size(SMALL).style(theme::error).into(),
-        None => space().width(0).into(),
-    };
+    let mut status = row![].spacing(6).align_y(Alignment::Center);
+    if let Some(error) = state.status() {
+        status = status
+            .push(text(error).size(SMALL).style(theme::error))
+            .push(
+                button(text("×").size(12))
+                    .on_press(app(AppMessage::DismissStatus))
+                    .padding([0, 6])
+                    .style(theme::flat(false)),
+            );
+    }
+    if let Some(error) = save_error {
+        status = status.push(text(error).size(SMALL).style(theme::error));
+    }
     container(
         row![
             toggle,
-            later("Console", "The console arrives in Phase 3"),
+            later("Console", "The console arrives later in Phase 3"),
             space().width(Fill),
             status,
             space().width(12),
-            later("Cookies", "The cookie manager arrives in Phase 3"),
+            later("Cookies", "The cookie manager arrives later in Phase 3"),
             later("Runner", "The Collection Runner arrives in Phase 4"),
             text(concat!("Ferry ", env!("CARGO_PKG_VERSION")))
                 .size(SMALL)

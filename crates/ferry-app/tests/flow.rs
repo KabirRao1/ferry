@@ -698,7 +698,7 @@ fn f07_ac5_session_saved_only_when_changed_and_restored() {
     };
     assert!(app.update(Message::Autosave).is_none(), "saved already");
     assert_eq!(session.tabs.len(), 2);
-    assert_eq!(session.tabs[0].url, "http://a.test/");
+    assert_eq!(session.tabs[0].draft.url, "http://a.test/");
     assert_eq!(session.active, 1);
     assert!(!session.sidebar_open);
 
@@ -711,7 +711,7 @@ fn f07_ac5_session_saved_only_when_changed_and_restored() {
 #[test]
 fn f07_ac5_restore_sanitizes_bad_values() {
     let app = App::restore(Session {
-        tabs: vec![RequestDraft::default()],
+        tabs: vec![RequestDraft::default().into()],
         active: 7,
         split: f32::NAN,
         ..Session::default()

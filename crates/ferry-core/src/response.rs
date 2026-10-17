@@ -3,11 +3,12 @@
 use std::time::Duration;
 
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 
 // CONTRACT
 /// One header, in order. Received values that are not valid UTF-8 are
 /// decoded lossily.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Header {
     pub name: String,
     pub value: String,

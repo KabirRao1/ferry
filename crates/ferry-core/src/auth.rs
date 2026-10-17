@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AuthKind {
+    /// Use the nearest parent folder's or collection's auth (F04-AC6).
+    Inherit,
     #[default]
     None,
     Basic,
@@ -20,7 +22,8 @@ pub enum AuthKind {
 impl AuthKind {
     // CONTRACT
     /// All types, in menu order.
-    pub const ALL: [AuthKind; 4] = [
+    pub const ALL: [AuthKind; 5] = [
+        AuthKind::Inherit,
         AuthKind::None,
         AuthKind::Basic,
         AuthKind::Bearer,
@@ -31,6 +34,7 @@ impl AuthKind {
 impl fmt::Display for AuthKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Inherit => "Inherit auth from parent",
             Self::None => "No Auth",
             Self::Basic => "Basic Auth",
             Self::Bearer => "Bearer Token",
@@ -68,12 +72,19 @@ impl fmt::Display for ApiKeyLocation {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AuthDraft {
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub kind: AuthKind,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub username: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub password: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub token: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub key: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub value: String,
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub location: ApiKeyLocation,
 }
 
@@ -91,7 +102,8 @@ impl AuthDraft {
     #[must_use]
     pub fn effect(&self) -> Option<AuthEffect> {
         match self.kind {
-            AuthKind::None => None,
+            // Inheritance is resolved by the caller, which knows the parents.
+            AuthKind::Inherit | AuthKind::None => None,
             AuthKind::Basic => {
                 let credentials = format!("{}:{}", self.username, self.password);
                 let encoded = base64::engine::general_purpose::STANDARD.encode(credentials);

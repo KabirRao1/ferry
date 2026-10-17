@@ -109,6 +109,7 @@ pub struct FormField {
     #[serde(flatten)]
     pub row: KeyValue,
     /// When set, the field sends this file and `row.value` is ignored.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<PathBuf>,
 }
 
@@ -117,11 +118,17 @@ pub struct FormField {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BodyDraft {
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub mode: BodyMode,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub raw: String,
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub language: RawLanguage,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub urlencoded: Vec<KeyValue>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub form: Vec<FormField>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub binary: Option<PathBuf>,
 }
 

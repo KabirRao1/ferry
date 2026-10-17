@@ -1,0 +1,95 @@
+---
+source: crates/ferry-core/tests/collection.rs
+assertion_line: 178
+expression: write_request(&rich_request())
+---
+name = "Create user"
+method = "POST"
+url = "{{base}}/users?page=2"
+
+[[params]]
+key = "page"
+value = "2"
+
+[[params]]
+key = "debug"
+value = "1"
+description = "off"
+enabled = false
+
+[[headers]]
+key = "Accept"
+value = "application/json"
+
+[body]
+mode = "raw"
+raw = """
+{
+  "name": "Ada"
+}"""
+language = "json"
+
+[[body.form]]
+key = "file"
+value = ""
+file = "data/a.png"
+
+[auth]
+kind = "bearer"
+token = "{{token}}"
+
+[options]
+follow_redirects = false
+
+[[examples]]
+name = "Created"
+status = 201
+body = '{"id": 7}'
+
+[[examples.headers]]
+name = "content-type"
+value = "application/json"
+
+[examples.request]
+method = "POST"
+url = "{{base}}/users?page=2"
+
+[[examples.request.params]]
+key = "page"
+value = "2"
+
+[[examples.request.params]]
+key = "debug"
+value = "1"
+description = "off"
+enabled = false
+
+[[examples.request.headers]]
+key = "Accept"
+value = "application/json"
+
+[examples.request.body]
+mode = "raw"
+raw = """
+{
+  "name": "Ada"
+}"""
+language = "json"
+
+[[examples.request.body.form]]
+key = "file"
+value = ""
+file = "data/a.png"
+
+[examples.request.auth]
+kind = "bearer"
+token = "{{token}}"
+
+[examples.request.options]
+follow_redirects = false
+
+[[examples]]
+name = "Binary"
+status = 200
+body = "AJ+Slv8="
+body_encoding = "base64"

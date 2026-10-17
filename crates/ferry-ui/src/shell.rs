@@ -1,10 +1,16 @@
 //! Top-level window: wires [`App`] to iced, runs effects (sends, file
-//! dialogs, session saves), keeps editor widgets in sync, handles shortcuts.
+//! dialogs, session saves, workspace changes), watches the workspace
+//! folder, keeps editor widgets in sync, handles shortcuts.
 
+use std::hash::Hash;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ferry_app::{App, Client, Edit, Effect, FileTarget, RealFs, SessionStore, Table};
+use ferry_app::{
+    App, Client, Doc, Edit, Effect, FileTarget, RealFs, SessionStore, Table, WorkspaceStore,
+};
+use iced::futures::Stream;
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::text_editor;
 use iced::{Subscription, Task, Theme, window};
@@ -24,6 +30,10 @@ pub enum Message {
     RawAction(text_editor::Action),
     /// An edit in a bulk-edit editor of the active tab.
     BulkAction(Table, text_editor::Action),
+    /// An edit in the multi-line field of a collection, folder or example tab.
+    DocAction(text_editor::Action),
+    /// Something in the workspace folder changed on disk (F09-AC10).
+    WorkspaceChanged,
     /// The request/response divider (F14-AC4).
     ResizeStart,
     /// Pointer at this share of the workbench height while resizing.
@@ -48,6 +58,8 @@ pub struct Shell {
     editors: Editors,
     client: Client,
     store: Option<Arc<SessionStore<RealFs>>>,
+    /// The workspace folder, when Ferry reads and writes one.
+    workspace: Option<Arc<WorkspaceStore<RealFs>>>,
     probe: Probe,
     resizing: bool,
     /// Last session save error, shown in the footer.
@@ -63,10 +75,18 @@ impl Shell {
             app,
             client,
             store: store.map(Arc::new),
+            workspace: None,
             probe: Probe::from_env(),
             resizing: false,
             save_error: None,
         }
+    }
+
+    /// Read and write the workspace in `store` (F09).
+    #[must_use]
+    pub fn with_workspace(mut self, store: WorkspaceStore<RealFs>) -> Self {
+        self.workspace = Some(Arc::new(store));
+        self
     }
 
     #[must_use]
@@ -120,6 +140,22 @@ impl Shell {
                     None => Task::none(),
                 }
             }
+            Message::DocAction(action) => {
+                let id = self.app.tab().id;
+                let doc = &self.app.tab().doc;
+                let edit: Option<fn(String) -> Edit> = match doc {
+                    Doc::Container(_) => Some(Edit::Description),
+                    Doc::Example(_) => Some(Edit::ExampleBody),
+                    _ => None,
+                };
+                match (edit, self.editors.doc_action(id, action)) {
+                    (Some(edit), Some(text)) => {
+                        self.update_app(ferry_app::Message::Edit(edit(text)))
+                    }
+                    _ => Task::none(),
+                }
+            }
+            Message::WorkspaceChanged => self.reload_workspace(),
             Message::ResizeStart => {
                 self.resizing = true;
                 Task::none()
@@ -177,7 +213,76 @@ impl Shell {
             Effect::PickFile { tab, target } => Task::perform(pick_file(target), move |path| {
                 Message::App(ferry_app::Message::FilePicked { tab, target, path })
             }),
+            Effect::Workspace { action, ops } => match &self.workspace {
+                Some(store) => {
+                    let store = Arc::clone(store);
+                    Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                let error = store.apply(&ops).err().map(|e| e.to_string());
+                                (error, store.load())
+                            })
+                            .await
+                        },
+                        move |result| {
+                            let (error, workspace) = result.unwrap_or_else(|e| {
+                                (Some(e.to_string()), ferry_app::Workspace::default())
+                            });
+                            Message::App(ferry_app::Message::WorkspaceApplied {
+                                action: action.clone(),
+                                error,
+                                workspace: Arc::new(workspace),
+                            })
+                        },
+                    )
+                }
+                None => Task::none(),
+            },
+            Effect::PickWorkspace => Task::perform(pick_folder(), |path| {
+                Message::App(ferry_app::Message::WorkspacePicked(path))
+            }),
+            Effect::SwitchWorkspace(path) => {
+                let store = Arc::new(WorkspaceStore::new(RealFs, &path));
+                self.workspace = Some(Arc::clone(&store));
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let error = store.init().err().map(|e| e.to_string());
+                            (error, store.load())
+                        })
+                        .await
+                    },
+                    |result| {
+                        let (error, workspace) = result.unwrap_or_else(|e| {
+                            (Some(e.to_string()), ferry_app::Workspace::default())
+                        });
+                        Message::App(ferry_app::Message::WorkspaceApplied {
+                            action: "open the workspace".to_owned(),
+                            error,
+                            workspace: Arc::new(workspace),
+                        })
+                    },
+                )
+            }
         }
+    }
+
+    /// Load the workspace again after an outside change (F09-AC10).
+    fn reload_workspace(&self) -> Task<Message> {
+        let Some(store) = &self.workspace else {
+            return Task::none();
+        };
+        let store = Arc::clone(store);
+        Task::perform(
+            async move { tokio::task::spawn_blocking(move || store.load()).await },
+            |result| match result {
+                Ok(workspace) => {
+                    Message::App(ferry_app::Message::WorkspaceLoaded(Arc::new(workspace)))
+                }
+                // The load task panicked; keep what is shown.
+                Err(_) => Message::Saved(None),
+            },
+        )
     }
 
     /// Save synchronously, for window close.
@@ -200,13 +305,21 @@ impl Shell {
         )
     }
 
-    /// Shortcuts, autosave, close requests and the startup probe.
+    /// Shortcuts, autosave, close requests, workspace watching and the
+    /// startup probe.
     pub fn subscription(&self) -> Subscription<Message> {
+        let watch = match &self.workspace {
+            Some(store) => {
+                Subscription::run_with(WatchRoot(store.root().to_path_buf()), watch_workspace)
+            }
+            None => Subscription::none(),
+        };
         Subscription::batch([
             keyboard::listen().filter_map(shortcut),
             iced::time::every(AUTOSAVE_EVERY).map(|_| Message::App(ferry_app::Message::Autosave)),
             window::close_requests().map(Message::CloseRequested),
             self.probe.subscription(|| Message::Frame),
+            watch,
         ])
     }
 
@@ -214,6 +327,39 @@ impl Shell {
     pub fn theme(&self) -> Theme {
         theme::theme()
     }
+}
+
+/// The folder a watch subscription follows; a new folder restarts it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct WatchRoot(PathBuf);
+
+/// Report changes in the workspace folder (F09-AC10).
+fn watch_workspace(root: &WatchRoot) -> impl Stream<Item = Message> + use<> {
+    let root = root.0.clone();
+    iced::stream::channel(16, async move |output| {
+        let sender = output.clone();
+        let watcher = ferry_app::watch::Watcher::start(&root, move || {
+            let _ = sender.clone().try_send(Message::WorkspaceChanged);
+        });
+        if let Err(error) = watcher.as_ref() {
+            eprintln!(
+                "ferry: not watching {} for changes: {error}",
+                root.display()
+            );
+        }
+        // Keep the watcher alive for as long as the subscription runs.
+        std::future::pending::<()>().await;
+        drop((watcher, output));
+    })
+}
+
+/// Ask the user for a workspace folder (F09-AC14).
+async fn pick_folder() -> Option<PathBuf> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Open a workspace folder")
+        .pick_folder()
+        .await
+        .map(|handle| handle.path().to_path_buf())
 }
 
 /// Ask the user for a file (F03-AC5, F03-AC6).
@@ -229,7 +375,7 @@ async fn pick_file(target: FileTarget) -> Option<std::path::PathBuf> {
         .map(|handle| handle.path().to_path_buf())
 }
 
-/// Global keyboard shortcuts (F05-AC1, F07-AC1..AC3, F14-AC4).
+/// Global keyboard shortcuts (F05-AC1, F07-AC1..AC3, F09-AC5, F14-AC4).
 #[must_use]
 pub fn shortcut(event: keyboard::Event) -> Option<Message> {
     use ferry_app::Message as M;
@@ -243,6 +389,8 @@ pub fn shortcut(event: keyboard::Event) -> Option<Message> {
         Key::Character("t") if modifiers.command() => M::NewTab,
         Key::Character("w") if modifiers.command() => M::CloseActiveTab,
         Key::Character("b") if modifiers.command() => M::ToggleSidebar,
+        Key::Character("s") if modifiers.command() => M::Save,
+        Key::Named(Named::Escape) => M::DialogCancel,
         _ => return None,
     };
     Some(Message::App(message))

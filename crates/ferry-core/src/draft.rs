@@ -6,7 +6,7 @@ use std::fmt;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use crate::auth::{AuthDraft, AuthEffect};
+use crate::auth::{AuthDraft, AuthEffect, AuthKind};
 use crate::body::{BodyDraft, BodyMode, guess_content_type};
 use crate::kv::KeyValue;
 use crate::params::Param;
@@ -14,6 +14,7 @@ use crate::request::{
     Method, Part, PartValue, Request, RequestBody, SendOptions, UrlError, is_tchar, parse_url,
 };
 use crate::response::Header;
+use crate::variables::{self, Resolver};
 
 /// `User-Agent` the client sends unless overridden.
 pub const USER_AGENT: &str = concat!("ferry/", env!("CARGO_PKG_VERSION"));
@@ -25,12 +26,19 @@ pub const CALCULATED: &str = "<calculated when request is sent>";
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RequestDraft {
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub method: Method,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub url: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub params: Vec<Param>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<KeyValue>,
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub body: BodyDraft,
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub auth: AuthDraft,
+    #[serde(skip_serializing_if = "crate::is_default")]
     pub options: SendOptions,
 }
 
@@ -135,6 +143,84 @@ impl RequestDraft {
                 value,
             })
             .collect()
+    }
+
+    // CONTRACT
+    /// The draft with variables resolved in every part that is sent: the
+    /// URL, active headers, the selected body mode's text and rows, and the
+    /// selected auth type's fields (F08-AC3). Problems are collected in
+    /// `resolver`.
+    #[must_use]
+    pub fn resolve(&self, resolver: &mut Resolver<'_, '_>) -> RequestDraft {
+        let mut out = self.clone();
+        self.visit_sent(&mut out, &mut |text| *text = resolver.resolve(text));
+        out
+    }
+
+    // CONTRACT
+    /// Names referenced by the parts that are sent, each once, in order:
+    /// URL, headers, body, auth (F08-AC6).
+    #[must_use]
+    pub fn variable_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        let mut copy = self.clone();
+        self.visit_sent(&mut copy, &mut |text| {
+            for r in variables::references(text) {
+                if !names.contains(&r.name) {
+                    names.push(r.name);
+                }
+            }
+        });
+        names
+    }
+
+    /// Call `f` on each text field of `target` that this draft sends, in
+    /// the order URL, headers, body, auth. `target` starts as a copy of
+    /// `self`; which fields are sent is decided from `self`.
+    fn visit_sent(&self, target: &mut RequestDraft, f: &mut dyn FnMut(&mut String)) {
+        f(&mut target.url);
+        for (row, out) in self.headers.iter().zip(&mut target.headers) {
+            if row.is_active() {
+                f(&mut out.key);
+                f(&mut out.value);
+            }
+        }
+        let body = &mut target.body;
+        match self.body.mode {
+            BodyMode::None | BodyMode::Binary => {}
+            BodyMode::Raw => f(&mut body.raw),
+            BodyMode::UrlEncoded => {
+                for (row, out) in self.body.urlencoded.iter().zip(&mut body.urlencoded) {
+                    if row.is_active() {
+                        f(&mut out.key);
+                        f(&mut out.value);
+                    }
+                }
+            }
+            BodyMode::FormData => {
+                for (field, out) in self.body.form.iter().zip(&mut body.form) {
+                    if field.row.is_active() {
+                        f(&mut out.row.key);
+                        if field.file.is_none() {
+                            f(&mut out.row.value);
+                        }
+                    }
+                }
+            }
+        }
+        let auth = &mut target.auth;
+        match self.auth.kind {
+            AuthKind::None | AuthKind::Inherit => {}
+            AuthKind::Basic => {
+                f(&mut auth.username);
+                f(&mut auth.password);
+            }
+            AuthKind::Bearer => f(&mut auth.token),
+            AuthKind::ApiKey => {
+                f(&mut auth.key);
+                f(&mut auth.value);
+            }
+        }
     }
 
     // CONTRACT

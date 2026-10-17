@@ -426,7 +426,7 @@ fn f07_ac5_session_roundtrips_through_toml() {
     d.auth.kind = AuthKind::ApiKey;
     d.auth.location = ApiKeyLocation::Query;
     let session = Session {
-        tabs: vec![d, RequestDraft::default()],
+        tabs: vec![d.into(), RequestDraft::default().into()],
         active: 1,
         sidebar_open: false,
         split: 0.3,
@@ -437,8 +437,9 @@ fn f07_ac5_session_roundtrips_through_toml() {
     assert_eq!(back, session);
     // Missing fields fall back to defaults.
     let minimal: Session = toml::from_str("[[tabs]]\nurl = \"http://x.test\"\n").unwrap();
-    assert_eq!(minimal.tabs[0].method, Method::Get);
-    assert!(minimal.tabs[0].options.follow_redirects);
+    assert_eq!(minimal.tabs[0].draft.method, Method::Get);
+    assert!(minimal.tabs[0].draft.options.follow_redirects);
+    assert_eq!(minimal.tabs[0].link, None);
     assert_eq!(minimal.version, Session::VERSION);
     // An invalid method is an error, not a silent default.
     assert!(toml::from_str::<Session>("[[tabs]]\nmethod = \"BAD METHOD\"\n").is_err());
@@ -463,7 +464,17 @@ fn f03_f04_menu_labels_match_postman() {
     let languages: Vec<String> = RawLanguage::ALL.iter().map(ToString::to_string).collect();
     assert_eq!(languages, ["Text", "JavaScript", "JSON", "HTML", "XML"]);
     let kinds: Vec<String> = AuthKind::ALL.iter().map(ToString::to_string).collect();
-    assert_eq!(kinds, ["No Auth", "Basic Auth", "Bearer Token", "API Key"]);
+    // Inherit was added first in the menu by F04-AC6 (Phase 3), as in Postman.
+    assert_eq!(
+        kinds,
+        [
+            "Inherit auth from parent",
+            "No Auth",
+            "Basic Auth",
+            "Bearer Token",
+            "API Key"
+        ]
+    );
     let places: Vec<String> = ApiKeyLocation::ALL
         .iter()
         .map(ToString::to_string)

@@ -1,15 +1,15 @@
 //! The main window, laid out like Postman (F14): header, left sidebar,
 //! workbench (tab strip, request builder, response pane), footer.
 
-use ferry_app::{App, SidebarSection};
+use ferry_app::{App, Doc, SidebarSection};
 use iced::widget::{
-    button, center, column, container, mouse_area, opaque, responsive, row, space, stack, text,
+    center, column, container, mouse_area, opaque, responsive, row, space, stack, text,
 };
 use iced::{Alignment, Fill, FillPortion, Shrink, mouse};
 
 use crate::editors::Editors;
 use crate::shell::Message;
-use crate::{Element, chrome, request, response, theme};
+use crate::{Element, chrome, dialogs, docs, request, response, sidebar, theme};
 
 /// UI text size.
 pub const TEXT: f32 = 13.0;
@@ -26,34 +26,44 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let mut body = row![];
     if app.sidebar_open() {
-        body = body.push(chrome::sidebar(app.sidebar()));
+        body = body.push(sidebar::view(app));
         body = body.push(vline());
     }
     body = body.push(workbench(app, editors, resizing));
     let main = column![
-        chrome::header(),
+        chrome::header(app),
         hline(),
         body.height(Fill),
         hline(),
-        chrome::footer(app.sidebar_open(), save_error),
+        chrome::footer(app, save_error),
     ];
     let main = container(main)
         .width(Fill)
         .height(Fill)
         .style(theme::app_background);
-    match app.confirm_close() {
-        Some(_) => stack![main, opaque(confirm_dialog())].into(),
+    match dialogs::view(app) {
+        Some(dialog) => stack![main, opaque(dialog)].into(),
         None => main.into(),
     }
 }
 
 fn workbench<'a>(app: &'a App, editors: &'a Editors, resizing: bool) -> Element<'a, Message> {
+    let tab = app.tab();
+    if tab.doc != Doc::Request {
+        return column![
+            chrome::tab_strip(app),
+            hline(),
+            docs::view(app, tab, editors)
+        ]
+        .height(Fill)
+        .into();
+    }
     let split = app.split();
     responsive(move |size| {
         // Portions out of 1000 keep the split precise; truncation is fine.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let top = (split * 1000.0) as u16;
-        let request = container(request::view(app.tab(), editors))
+        let request = container(request::view(app, app.tab(), editors))
             .height(FillPortion(top.max(1)))
             .width(Fill);
         let response = container(response::view(app.tab()))
@@ -86,38 +96,6 @@ fn workbench<'a>(app: &'a App, editors: &'a Editors, resizing: bool) -> Element<
         }
     })
     .into()
-}
-
-fn confirm_dialog() -> Element<'static, Message> {
-    let dialog = container(
-        column![
-            text("Discard unsaved changes?").size(16),
-            text("This request has changes that are not saved. Closing the tab discards them.")
-                .size(TEXT)
-                .style(theme::muted),
-            row![
-                space().width(Fill),
-                button(text("Cancel").size(TEXT))
-                    .on_press(Message::App(ferry_app::Message::ConfirmClose(false)))
-                    .padding([6, 14])
-                    .style(theme::secondary),
-                button(text("Discard").size(TEXT))
-                    .on_press(Message::App(ferry_app::Message::ConfirmClose(true)))
-                    .padding([6, 14])
-                    .style(theme::danger),
-            ]
-            .spacing(8),
-        ]
-        .spacing(12)
-        .width(380),
-    )
-    .padding(20)
-    .style(theme::dialog);
-    container(center(dialog))
-        .width(Fill)
-        .height(Fill)
-        .style(theme::scrim)
-        .into()
 }
 
 /// A 1 px horizontal line.

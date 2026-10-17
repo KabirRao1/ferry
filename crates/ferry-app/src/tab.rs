@@ -15,6 +15,7 @@ use ferry_core::response::Response;
 use ferry_http::CancellationToken;
 
 use crate::body_view::{self, BodyView};
+use crate::doc::{self, ContainerSection, Doc, VarEdit};
 
 // CONTRACT
 /// Identifies a tab for its whole life, across reorders.
@@ -157,6 +158,8 @@ pub enum Table {
     Headers,
     UrlEncoded,
     Form,
+    /// The response headers of an example (F32-AC3).
+    ExampleHeaders,
 }
 
 // CONTRACT
@@ -210,6 +213,16 @@ pub enum Edit {
     ApiLocation(ApiKeyLocation),
     FollowRedirects(bool),
     VerifyTls(bool),
+    /// A row of an environment's or a collection's variables (F08-AC8,
+    /// F09-AC11).
+    Var(usize, VarEdit),
+    /// A collection's or folder's description (F09-AC11).
+    Description(String),
+    ContainerSection(ContainerSection),
+    /// An example's name, status code and body (F32-AC3).
+    ExampleName(String),
+    ExampleStatus(String),
+    ExampleBody(String),
 }
 
 // CONTRACT
@@ -234,6 +247,12 @@ pub struct Tab {
     /// Bumped whenever the app itself rewrites the raw body (Beautify,
     /// restore), so an editor widget knows to reload it.
     pub raw_revision: u64,
+    /// Workspace path of the saved request this tab edits (F07-AC7).
+    pub link: Option<String>,
+    /// The saved request's name, while linked.
+    pub name: Option<String>,
+    /// What the tab holds; request state lives in the fields above.
+    pub doc: Doc,
 }
 
 impl Tab {
@@ -254,28 +273,60 @@ impl Tab {
             show_auto_headers: false,
             json_error: None,
             raw_revision: 0,
+            link: None,
+            name: None,
+            doc: Doc::Request,
         };
         tab.refresh_json_error();
         tab
     }
 
     // CONTRACT
-    /// The tab's title: its URL, or `Untitled Request` (F07-AC1).
+    /// Replace the request, as when a saved request is opened or reloaded:
+    /// editors reload, bulk edit closes, and the method field follows.
+    pub fn set_draft(&mut self, draft: RequestDraft) {
+        self.method_text = draft.method.to_string();
+        self.method_error = None;
+        self.draft = draft;
+        self.bulk.clear();
+        self.raw_revision += 1;
+        self.refresh_json_error();
+    }
+
+    // CONTRACT
+    /// The tab's title: a saved request's name, otherwise its URL or
+    /// `Untitled Request` (F07-AC1, F07-AC7); for other tabs, the name of
+    /// what they hold.
     #[must_use]
     pub fn title(&self) -> &str {
-        let url = self.draft.url.trim();
-        if url.is_empty() {
-            "Untitled Request"
-        } else {
-            url
+        match &self.doc {
+            Doc::Request => {
+                if let Some(name) = &self.name {
+                    return name;
+                }
+                let url = self.draft.url.trim();
+                if url.is_empty() {
+                    "Untitled Request"
+                } else {
+                    url
+                }
+            }
+            Doc::Environment(env) => &env.name,
+            Doc::Container(c) => &c.name,
+            Doc::Example(e) => &e.draft.name,
         }
     }
 
     // CONTRACT
-    /// Whether the request differs from its saved state (F07-AC4).
+    /// Whether the tab differs from its saved state (F07-AC4).
     #[must_use]
     pub fn is_dirty(&self) -> bool {
-        self.draft != self.saved
+        match &self.doc {
+            Doc::Request => self.draft != self.saved,
+            Doc::Environment(env) => env.draft != env.saved,
+            Doc::Container(c) => c.draft != c.saved,
+            Doc::Example(e) => e.draft != e.saved,
+        }
     }
 
     #[must_use]
@@ -296,6 +347,9 @@ impl Tab {
     // CONTRACT
     /// Apply `edit`. Returns `true` if the request changed.
     pub fn edit(&mut self, edit: Edit) -> bool {
+        if self.doc != Doc::Request {
+            return doc::edit(&mut self.doc, edit);
+        }
         let before = self.draft.clone();
         let d = &mut self.draft;
         match edit {
@@ -348,6 +402,13 @@ impl Tab {
             Edit::ApiLocation(v) => d.auth.location = v,
             Edit::FollowRedirects(v) => d.options.follow_redirects = v,
             Edit::VerifyTls(v) => d.options.verify_tls = v,
+            // Edits for other kinds of tab.
+            Edit::Var(..)
+            | Edit::Description(_)
+            | Edit::ContainerSection(_)
+            | Edit::ExampleName(_)
+            | Edit::ExampleStatus(_)
+            | Edit::ExampleBody(_) => {}
         }
         self.refresh_json_error();
         self.draft != before
@@ -392,6 +453,7 @@ impl Tab {
             Table::UrlEncoded => {
                 apply_row(&mut d.body.urlencoded, index, edit, |r| r);
             }
+            Table::ExampleHeaders => {}
             Table::Form => {
                 if edit == RowEdit::ClearFile {
                     if let Some(field) = d.body.form.get_mut(index) {
@@ -411,6 +473,7 @@ impl Tab {
             Table::Headers => d.headers.clone(),
             Table::UrlEncoded => d.body.urlencoded.clone(),
             Table::Form => d.body.form.iter().map(|f| f.row.clone()).collect(),
+            Table::ExampleHeaders => Vec::new(),
         }
     }
 
@@ -439,6 +502,7 @@ impl Tab {
             }
             Table::Headers => d.headers = rows,
             Table::UrlEncoded => d.body.urlencoded = rows,
+            Table::ExampleHeaders => {}
             Table::Form => {
                 // Files stay with their rows by position.
                 let files: Vec<Option<PathBuf>> =
@@ -495,7 +559,7 @@ impl Tab {
 
 /// Apply a row edit to `rows`, creating the row if `index` is the trailing
 /// blank row. Returns whether anything changed.
-fn apply_row<T: Default>(
+pub(crate) fn apply_row<T: Default>(
     rows: &mut Vec<T>,
     index: usize,
     edit: RowEdit,

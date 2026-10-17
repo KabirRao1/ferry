@@ -58,6 +58,23 @@ impl Fs for MemFs {
         self.put(to, &data);
         Ok(())
     }
+    // The session store never lists, creates or removes; the workspace
+    // tests use `ferry_store::MemFs`, which supports everything.
+    fn read_dir(&self, _: &Path) -> io::Result<Vec<ferry_store::DirEntry>> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+    fn create_dir_all(&self, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+    fn remove_file(&self, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+    fn remove_dir_all(&self, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+    fn kind(&self, _: &Path) -> io::Result<Option<bool>> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
 }
 
 fn dir() -> PathBuf {
@@ -70,8 +87,9 @@ fn sample() -> Session {
             RequestDraft {
                 url: "https://a.test/one".into(),
                 ..RequestDraft::default()
-            },
-            RequestDraft::default(),
+            }
+            .into(),
+            RequestDraft::default().into(),
         ],
         active: 1,
         sidebar_open: false,

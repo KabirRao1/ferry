@@ -1,21 +1,29 @@
 //! The workbench: open tabs, layout, messages, `update()` and effects
-//! (F05, F06, F07, F14).
+//! (F05, F06, F07, F08, F09, F14).
 
+use std::collections::BTreeSet;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use ferry_core::auth::{AuthDraft, AuthKind};
+use ferry_core::collection::{self, AuthSource};
 use ferry_core::draft::RequestDraft;
 use ferry_core::json;
 use ferry_core::request::Request;
-use ferry_core::session::Session;
+use ferry_core::session::{Session, SessionTab};
 use ferry_core::text::looks_binary;
+use ferry_core::variables::{Resolver, ScopeKind, Vars};
+use ferry_core::workspace::{Op, Workspace};
 use ferry_http::{CancellationToken, Client, Outcome};
 
+use crate::ambient::{Ambient, SystemAmbient};
 use crate::body_view::{self, BodyView};
+use crate::doc::{Doc, EnvTarget};
 use crate::tab::{
     BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, Tab, TabId,
 };
+use crate::workspace::{Dialog, Target};
 
 /// Display lines longer than this many bytes wrap (F06-AC9).
 pub const WRAP_BYTES: NonZeroU32 = match NonZeroU32::new(4096) {
@@ -100,6 +108,61 @@ pub enum Message {
         id: u64,
         result: Arc<Finished>,
     },
+
+    // --- workspace (F08, F09) ---
+    /// The workspace was (re)loaded, at startup or after an outside change.
+    WorkspaceLoaded(Arc<Workspace>),
+    /// [`Effect::Workspace`] ran; `error` is the reason it failed.
+    WorkspaceApplied {
+        action: String,
+        error: Option<String>,
+        workspace: Arc<Workspace>,
+    },
+    /// `Open Workspace…` (F09-AC14).
+    OpenWorkspace,
+    /// The folder dialog closed; `None` if cancelled.
+    WorkspacePicked(Option<PathBuf>),
+    /// Save button or Ctrl/Cmd+S on the active tab (F08-AC8, F09-AC5).
+    Save,
+    /// Typed into the header search (F09-AC13).
+    Search(String),
+    /// Expand or collapse a collection or folder.
+    ToggleExpanded(String),
+    /// Open a request, or a collection's or folder's settings (F09-AC4,
+    /// F09-AC11).
+    OpenItem(String),
+    /// Open or close the `…` menu of a sidebar entry.
+    Menu(Option<String>),
+    NewCollection,
+    /// A new folder in this collection or folder.
+    NewFolder(String),
+    /// A new request in this collection or folder.
+    NewRequest(String),
+    Rename(Target),
+    Duplicate(Target),
+    Delete(Target),
+    /// Drag and drop in the tree (F09-AC9): pressing an item, the pointer
+    /// entering another, and releasing. Releasing on the pressed item
+    /// opens it.
+    ItemPressed(String),
+    ItemEntered(String),
+    ItemReleased,
+    /// Open an example of the request at this path (F32-AC3).
+    OpenExample(String, usize),
+    /// The environment selector (F08-AC9).
+    SelectEnvironment(Option<String>),
+    NewEnvironment,
+    OpenEnvironment(EnvTarget),
+    /// Text typed into the open dialog's name field.
+    DialogInput(String),
+    /// The collection or folder picked in the Save dialog.
+    DialogPick(String),
+    /// The name of the collection the Save dialog creates when there is none.
+    DialogCollectionName(String),
+    DialogConfirm,
+    DialogCancel,
+    /// Hide the footer's error.
+    DismissStatus,
 }
 
 // CONTRACT
@@ -119,14 +182,25 @@ pub enum Effect {
         tab: TabId,
         target: FileTarget,
     },
+    /// Apply `ops` to the workspace folder, reload it, and report
+    /// [`Message::WorkspaceApplied`]. `action` completes `Could not …`.
+    Workspace {
+        action: String,
+        ops: Vec<Op>,
+    },
+    /// Show a folder dialog, then report [`Message::WorkspacePicked`].
+    PickWorkspace,
+    /// Switch to the workspace in this folder and report
+    /// [`Message::WorkspaceLoaded`] (F09-AC14).
+    SwitchWorkspace(PathBuf),
 }
 
 // CONTRACT
 /// The main window's state.
 #[derive(Debug)]
 pub struct App {
-    tabs: Vec<Tab>,
-    active: usize,
+    pub(crate) tabs: Vec<Tab>,
+    pub(crate) active: usize,
     next_tab: u64,
     last_send: u64,
     sidebar_open: bool,
@@ -135,7 +209,24 @@ pub struct App {
     /// Tab waiting for `Discard unsaved changes?`.
     confirm_close: Option<TabId>,
     dragging: Option<TabId>,
-    session_changed: bool,
+    pub(crate) session_changed: bool,
+    pub(crate) workspace: Arc<Workspace>,
+    /// The folder chosen with `Open Workspace…`, if any; saved.
+    pub(crate) workspace_dir: Option<PathBuf>,
+    /// The folder in use, for display; not saved.
+    pub(crate) workspace_root: Option<PathBuf>,
+    /// Path of the selected environment.
+    pub(crate) environment: Option<String>,
+    pub(crate) expanded: BTreeSet<String>,
+    pub(crate) search: String,
+    pub(crate) dialog: Option<Dialog>,
+    pub(crate) menu: Option<String>,
+    /// Tree drag and drop: the pressed item and the one under the pointer.
+    pub(crate) tree_drag: Option<String>,
+    pub(crate) tree_target: Option<String>,
+    /// The last workspace error, shown in the footer.
+    pub(crate) status: Option<String>,
+    pub(crate) ambient: Box<dyn Ambient>,
 }
 
 impl Default for App {
@@ -165,9 +256,22 @@ impl App {
             confirm_close: None,
             dragging: None,
             session_changed: false,
+            workspace: Arc::new(Workspace::default()),
+            workspace_root: session.workspace.clone(),
+            workspace_dir: session.workspace,
+            environment: session.environment,
+            expanded: BTreeSet::new(),
+            search: String::new(),
+            dialog: None,
+            menu: None,
+            tree_drag: None,
+            tree_target: None,
+            status: None,
+            ambient: Box::new(SystemAmbient::default()),
         };
-        for draft in session.tabs {
-            app.push_tab(draft);
+        for tab in session.tabs {
+            let i = app.push_tab(tab.draft);
+            app.tabs[i].link = tab.link;
         }
         if app.tabs.is_empty() {
             app.push_tab(RequestDraft::default());
@@ -177,14 +281,55 @@ impl App {
     }
 
     // CONTRACT
-    /// What to save (F07-AC5).
+    /// Load `workspace` into a freshly restored app: linked tabs get their
+    /// saved state, and a selected environment that is gone is cleared.
+    #[must_use]
+    pub fn with_workspace(mut self, workspace: Workspace) -> Self {
+        self.workspace_loaded(Arc::new(workspace));
+        self.session_changed = false;
+        self
+    }
+
+    // CONTRACT
+    /// The workspace folder in use, shown in the header.
+    #[must_use]
+    pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
+        self.workspace_root = Some(root);
+        self
+    }
+
+    // CONTRACT
+    /// Use `ambient` for the clock, randomness and time zone.
+    #[must_use]
+    pub fn with_ambient(mut self, ambient: Box<dyn Ambient>) -> Self {
+        self.ambient = ambient;
+        self
+    }
+
+    // CONTRACT
+    /// What to save (F07-AC5, F07-AC7): request tabs with their links, the
+    /// environment and the workspace folder. The active index counts
+    /// request tabs only.
     #[must_use]
     pub fn session(&self) -> Session {
+        let requests: Vec<&Tab> = self.tabs.iter().filter(|t| t.doc == Doc::Request).collect();
+        let active = requests
+            .iter()
+            .position(|t| t.id == self.tab().id)
+            .unwrap_or(0);
         Session {
-            tabs: self.tabs.iter().map(|t| t.draft.clone()).collect(),
-            active: self.active,
+            tabs: requests
+                .iter()
+                .map(|t| SessionTab {
+                    link: t.link.clone(),
+                    draft: t.draft.clone(),
+                })
+                .collect(),
+            active,
             sidebar_open: self.sidebar_open,
             split: self.split,
+            environment: self.environment.clone(),
+            workspace: self.workspace_dir.clone(),
             ..Session::default()
         }
     }
@@ -193,6 +338,13 @@ impl App {
         self.next_tab += 1;
         self.tabs.push(Tab::new(TabId(self.next_tab), draft));
         self.tabs.len() - 1
+    }
+
+    /// Open a tab holding `doc` and make it active.
+    pub(crate) fn push_doc(&mut self, doc: Doc) {
+        let i = self.push_tab(RequestDraft::default());
+        self.tabs[i].doc = doc;
+        self.active = i;
     }
 
     #[must_use]
@@ -239,6 +391,71 @@ impl App {
     #[must_use]
     pub fn dragging(&self) -> Option<TabId> {
         self.dragging
+    }
+
+    #[must_use]
+    pub fn workspace(&self) -> &Workspace {
+        &self.workspace
+    }
+
+    /// The folder chosen with `Open Workspace…`, if any.
+    #[must_use]
+    pub fn workspace_dir(&self) -> Option<&Path> {
+        self.workspace_dir.as_deref()
+    }
+
+    /// The workspace folder in use, if known.
+    #[must_use]
+    pub fn workspace_root(&self) -> Option<&Path> {
+        self.workspace_root.as_deref()
+    }
+
+    /// Path of the selected environment.
+    #[must_use]
+    pub fn environment(&self) -> Option<&str> {
+        self.environment.as_deref()
+    }
+
+    #[must_use]
+    pub fn is_expanded(&self, path: &str) -> bool {
+        self.expanded.contains(path)
+    }
+
+    #[must_use]
+    pub fn search(&self) -> &str {
+        &self.search
+    }
+
+    #[must_use]
+    pub fn dialog(&self) -> Option<&Dialog> {
+        self.dialog.as_ref()
+    }
+
+    /// The sidebar entry whose `…` menu is open.
+    #[must_use]
+    pub fn menu(&self) -> Option<&str> {
+        self.menu.as_deref()
+    }
+
+    /// The tree item being dragged and the one under the pointer.
+    #[must_use]
+    pub fn tree_drag(&self) -> (Option<&str>, Option<&str>) {
+        (self.tree_drag.as_deref(), self.tree_target.as_deref())
+    }
+
+    /// The last workspace error (F09-AC15).
+    #[must_use]
+    pub fn status(&self) -> Option<&str> {
+        self.status.as_deref()
+    }
+
+    // CONTRACT
+    /// What Inherit means for a request tab: the nearest parent's auth and
+    /// where it comes from, or `None` for an unlinked tab (F04-AC6).
+    #[must_use]
+    pub fn inherited_auth(&self, tab: &Tab) -> Option<(AuthDraft, AuthSource)> {
+        let link = tab.link.as_deref()?;
+        collection::inherited_auth(&self.workspace.collections, link)
     }
 
     fn index_of(&self, id: TabId) -> Option<usize> {
@@ -328,6 +545,7 @@ impl App {
                     self.tabs[i].finished(id, result);
                 }
             }
+            other => return self.workspace_message(other),
         }
         None
     }
@@ -378,6 +596,25 @@ impl App {
         self.session_changed = true;
     }
 
+    /// The request tab `index` sends: inherited auth filled in, variables
+    /// resolved (F04-AC6, F08-AC3), then built.
+    fn prepare(&mut self, index: usize) -> Result<Request, String> {
+        let tab = &self.tabs[index];
+        let mut draft = tab.draft.clone();
+        if draft.auth.kind == AuthKind::Inherit {
+            draft.auth = self
+                .inherited_auth(tab)
+                .map(|(auth, _)| auth)
+                .unwrap_or_default();
+        }
+        let workspace = Arc::clone(&self.workspace);
+        let resolver_vars = vars_for(&workspace, self.environment.as_deref(), tab.link.as_deref());
+        let mut resolver = Resolver::new(&resolver_vars, self.ambient.as_mut());
+        let resolved = draft.resolve(&mut resolver);
+        resolver.finish().map_err(|e| e.to_string())?;
+        resolved.build().map_err(|e| e.to_string())
+    }
+
     fn send(&mut self) -> Option<Effect> {
         let tab = &mut self.tabs[self.active];
         if tab.is_sending() {
@@ -387,13 +624,14 @@ impl App {
             tab.phase = Phase::Failed(error.to_string());
             return None;
         }
-        let request = match tab.draft.build() {
+        let request = match self.prepare(self.active) {
             Ok(request) => request,
             Err(error) => {
-                tab.phase = Phase::Failed(error.to_string());
+                self.tabs[self.active].phase = Phase::Failed(error);
                 return None;
             }
         };
+        let tab = &mut self.tabs[self.active];
         self.last_send += 1;
         let cancel = CancellationToken::new();
         tab.phase = Phase::Sending {
@@ -407,6 +645,32 @@ impl App {
             cancel,
         })
     }
+}
+
+/// The variables in effect for a request linked to `link`, with the
+/// environment at `environment` selected (F08-AC2).
+pub(crate) fn vars_for<'a>(
+    workspace: &'a Workspace,
+    environment: Option<&str>,
+    link: Option<&str>,
+) -> Vars<'a> {
+    let mut vars = Vars::new();
+    if let Some(env) = environment
+        .and_then(|p| workspace.environment(p))
+        .and_then(|e| e.file.as_ref().ok())
+    {
+        vars = vars.with(ScopeKind::Environment, &env.variables);
+    }
+    if let Some(link) = link {
+        vars = vars.with(
+            ScopeKind::Collection,
+            collection::collection_variables(&workspace.collections, link),
+        );
+    }
+    if let Ok(globals) = &workspace.globals {
+        vars = vars.with(ScopeKind::Global, &globals.variables);
+    }
+    vars
 }
 
 // CONTRACT

@@ -116,7 +116,9 @@ fn f14_ac1_layout_regions_are_present() {
         "Environments",
         "History",
         UNTITLED,
-        "No environment",
+        // The environment selector is a pick list, whose label the text
+        // selector cannot see (ADR-0025); snapshots cover it.
+        "Save",
         "Send",
         "Hide sidebar",
         "Console",

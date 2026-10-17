@@ -1,0 +1,15 @@
+---
+source: crates/ferry-core/tests/collection.rs
+assertion_line: 340
+expression: text
+---
+name = "Payments API"
+description = "Charges and refunds."
+
+[auth]
+kind = "bearer"
+token = "{{token}}"
+
+[[variables]]
+key = "base"
+value = "https://pay.test"

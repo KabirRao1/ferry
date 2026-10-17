@@ -264,3 +264,57 @@ pub fn cell(theme: &Theme, status: text_input::Status) -> text_input::Style {
     style.border.radius = 0.0.into();
     style
 }
+
+/// A row of the collections tree: raised when its request is the active
+/// tab, outlined in the accent while something is dragged over it.
+pub fn tree_row(active: bool, hovered: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_| container::Style {
+        background: active.then_some(Background::Color(RAISED)),
+        border: Border {
+            color: if hovered { ACCENT } else { Color::TRANSPARENT },
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        text_color: Some(TEXT),
+        ..container::Style::default()
+    }
+}
+
+/// A variable chip under the URL bar (F08-AC6).
+pub fn chip(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(RAISED)),
+        border: Border {
+            color: BORDER,
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        text_color: Some(TEXT),
+        ..container::Style::default()
+    }
+}
+
+/// An unresolved variable chip.
+pub fn chip_error(theme: &Theme) -> container::Style {
+    let mut style = chip(theme);
+    style.border.color = ERROR;
+    style
+}
+
+/// One option of a list the user picks from, such as the Save dialog's
+/// destinations: the chosen one is filled with the accent.
+pub fn choice(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |theme, status| {
+        let mut style = flat(selected)(theme, status);
+        if selected {
+            style.background = Some(Background::Color(Color {
+                a: 0.35,
+                ..ACCENT_STRONG
+            }));
+            style.text_color = TEXT;
+            style.border.color = ACCENT_STRONG;
+            style.border.width = 1.0;
+        }
+        style
+    }
+}

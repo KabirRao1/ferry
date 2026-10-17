@@ -11,6 +11,10 @@ homepage.workspace = true
 
 [dependencies]
 bytes.workspace = true
+# Local time zone for history dates (F10-AC3).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Randomness for dynamic variables (F08-AC7).
+fastrand = "2"
 ferry-core.workspace = true
 ferry-http.workspace = true
 ferry-store.workspace = true

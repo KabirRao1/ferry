@@ -1,0 +1,20 @@
+---
+source: crates/ferry-core/tests/collection.rs
+assertion_line: 400
+expression: shared
+---
+name = "Staging"
+
+[[variables]]
+key = "base"
+value = "https://staging.test"
+
+[[variables]]
+key = "debug"
+value = "1"
+enabled = false
+
+[[variables]]
+key = "token"
+value = ""
+secret = true

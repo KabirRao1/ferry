@@ -2,13 +2,14 @@
 //! Authorization, Headers, Body, Scripts and Settings tabs (F01..F05, F14-AC2).
 
 use ferry_app::{
-    ApiKeyLocation, AuthKind, BodyMode, Edit, FileTarget, KeyValue, Message as AppMessage, Method,
-    RawLanguage, RequestTab, RowEdit, Tab, Table,
+    ApiKeyLocation, App, AuthDraft, AuthKind, BodyMode, Edit, FileTarget, KeyValue,
+    Message as AppMessage, Method, RawLanguage, RequestTab, RowEdit, Tab, Table, VarState,
+    collection,
 };
 use iced::widget::text::Wrapping;
 use iced::widget::{
     button, checkbox, column, combo_box, container, pick_list, radio, row, scrollable, space, text,
-    text_editor, text_input, toggler,
+    text_editor, text_input, toggler, tooltip,
 };
 use iced::{Alignment, Fill, Font, Length};
 
@@ -32,17 +33,19 @@ fn app(m: AppMessage) -> Message {
     Message::App(m)
 }
 
+/// Shown for secret variable values (F08-AC6).
+pub const MASKED: &str = "••••••";
+
 /// The request builder for `tab`.
 #[must_use]
-pub fn view<'a>(tab: &'a Tab, editors: &'a Editors) -> Element<'a, Message> {
-    let title = row![
-        text(tab.title()).size(14).wrapping(Wrapping::None),
-        space().width(Fill),
-    ]
-    .align_y(Alignment::Center);
+pub fn view<'a>(app_state: &'a App, tab: &'a Tab, editors: &'a Editors) -> Element<'a, Message> {
     let content: Element<'a, Message> = match tab.request_tab {
         RequestTab::Params => table(tab, editors, Table::Params, "Query Params"),
-        RequestTab::Authorization => auth(tab),
+        RequestTab::Authorization => {
+            let note = (tab.draft.auth.kind == AuthKind::Inherit)
+                .then(|| collection::inherit_note(app_state.inherited_auth(tab).as_ref()));
+            auth_view(&tab.draft.auth, note)
+        }
         RequestTab::Headers => headers(tab, editors),
         RequestTab::Body => body(tab, editors),
         RequestTab::Scripts => coming(
@@ -51,19 +54,109 @@ pub fn view<'a>(tab: &'a Tab, editors: &'a Editors) -> Element<'a, Message> {
         ),
         RequestTab::Settings => settings(tab),
     };
+    let mut page = column![title_row(app_state, tab), url_bar(tab, editors)].spacing(10);
+    if let Some(strip) = variable_strip(app_state) {
+        page = page.push(strip);
+    }
     container(
-        column![
-            title,
-            url_bar(tab, editors),
-            sub_tabs(tab),
-            container(content).height(Fill).width(Fill),
-        ]
-        .spacing(10),
+        page.push(sub_tabs(tab))
+            .push(container(content).height(Fill).width(Fill)),
     )
     .padding([10, 16])
     .height(Fill)
     .style(theme::surface)
     .into()
+}
+
+/// The request's location and the Save button (F14-AC6).
+fn title_row<'a>(app_state: &'a App, tab: &'a Tab) -> Element<'a, Message> {
+    let location = app_state.location(tab);
+    let mut crumbs = row![].spacing(6).align_y(Alignment::Center);
+    if location.is_empty() {
+        crumbs = crumbs.push(text(tab.title()).size(14).wrapping(Wrapping::None));
+    } else {
+        let last = location.len() - 1;
+        for (i, part) in location.into_iter().enumerate() {
+            if i > 0 {
+                crumbs = crumbs.push(text("/").size(14).style(theme::faint));
+            }
+            let label = text(part).size(14).wrapping(Wrapping::None);
+            crumbs = crumbs.push(if i == last {
+                label
+            } else {
+                label.style(theme::muted)
+            });
+        }
+    }
+    row![
+        container(crumbs).width(Fill).clip(true),
+        button(text("Save").size(TEXT))
+            .on_press(app(AppMessage::Save))
+            .padding([5, 14])
+            .style(theme::secondary),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The variables the request uses, as chips under the URL bar (F08-AC6).
+fn variable_strip(app_state: &App) -> Option<Element<'_, Message>> {
+    let uses = app_state.variable_strip();
+    if uses.is_empty() {
+        return None;
+    }
+    let chips = uses.into_iter().map(|u| {
+        let (value, detail, missing) = match u.state {
+            VarState::Defined {
+                value,
+                scope,
+                secret,
+            } => {
+                let shown = if secret { MASKED.to_owned() } else { value };
+                (shown, scope.to_string(), false)
+            }
+            VarState::Dynamic => (
+                "dynamic".to_owned(),
+                "Generated when sent".to_owned(),
+                false,
+            ),
+            VarState::Missing => (
+                "not defined".to_owned(),
+                "Not in the environment, collection or globals; sending is blocked".to_owned(),
+                true,
+            ),
+        };
+        let chip = container(
+            row![
+                text(format!("{{{{{}}}}}", u.name))
+                    .size(SMALL)
+                    .style(if missing { theme::error } else { theme::accent }),
+                text(value)
+                    .size(SMALL)
+                    .style(if missing { theme::error } else { theme::muted })
+                    .wrapping(Wrapping::None),
+            ]
+            .spacing(6),
+        )
+        .padding([2, 8])
+        .max_width(320)
+        .clip(true)
+        .style(if missing {
+            theme::chip_error
+        } else {
+            theme::chip
+        });
+        tooltip(
+            chip,
+            container(text(detail).size(SMALL))
+                .padding(6)
+                .style(theme::dialog),
+            tooltip::Position::Bottom,
+        )
+        .into()
+    });
+    Some(row(chips).spacing(6).wrap().into())
 }
 
 fn url_bar<'a>(tab: &'a Tab, editors: &'a Editors) -> Element<'a, Message> {
@@ -228,7 +321,17 @@ fn rows(tab: &Tab, which: Table) -> Element<'_, Message> {
             .iter()
             .map(|f| (&f.row, f.file.as_deref()))
             .collect(),
+        Table::ExampleHeaders => Vec::new(),
     };
+    table_rows(which, &data)
+}
+
+/// The rows of a key-value table, with its trailing blank row (F01-AC8).
+#[must_use]
+pub fn table_rows<'a>(
+    which: Table,
+    data: &[(&KeyValue, Option<&std::path::Path>)],
+) -> Element<'a, Message> {
     let is_form = which == Table::Form;
     let header = row![
         space().width(28),
@@ -399,8 +502,10 @@ fn headers<'a>(tab: &'a Tab, editors: &'a Editors) -> Element<'a, Message> {
 
 // --- auth -----------------------------------------------------------------------------
 
-fn auth(tab: &Tab) -> Element<'_, Message> {
-    let a = &tab.draft.auth;
+/// The Authorization editor for `a`: the request's, or a collection's or
+/// folder's (F04, F09-AC11). `note` explains Inherit (F04-AC6).
+#[must_use]
+pub fn auth_view(a: &AuthDraft, note: Option<String>) -> Element<'_, Message> {
     let kind = column![
         text("Auth Type").size(SMALL).style(theme::muted),
         pick_list(AuthKind::ALL, Some(a.kind), |k| edit(Edit::AuthKind(k)))
@@ -427,6 +532,10 @@ fn auth(tab: &Tab) -> Element<'_, Message> {
     };
     let fields: Element<'_, Message> = match a.kind {
         AuthKind::None => text(NO_AUTH).size(TEXT).style(theme::muted).into(),
+        AuthKind::Inherit => text(note.unwrap_or_default())
+            .size(TEXT)
+            .style(theme::muted)
+            .into(),
         AuthKind::Basic => column![
             field("Username", &a.username, false, Edit::Username),
             field("Password", &a.password, true, Edit::Password),
