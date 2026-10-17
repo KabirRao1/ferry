@@ -31,9 +31,16 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts
 
+  # The full run takes longer than one job's 3-hour limit, so it is split into
+  # shards that run in parallel (each shard tests every 8th mutant).
   mutants:
+    name: mutants (shard ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v5
       - run: rustup show active-toolchain || rustup toolchain install
@@ -41,9 +48,9 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest,cargo-mutants
-      - run: cargo xtask mutants --all
+      - run: cargo xtask mutants --all --shard ${{ matrix.shard }}/8 --jobs 2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutants-out
+          name: mutants-out-${{ matrix.shard }}
           path: mutants.out

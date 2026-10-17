@@ -16,7 +16,8 @@ commands:
   arch                           check crate dependency direction
   budgets [--ci] [--record]      measure performance budgets against budgets.toml
   coverage                       run coverage and check per-crate floors
-  mutants [--all] [--base REF]   mutation-test changed code in core, app, store
+  mutants [--all] [--base REF] [--shard K/N] [--jobs N]
+                                 mutation-test changed code in core, app, store
 ";
 
 fn main() -> ExitCode {
@@ -29,11 +30,13 @@ fn main() -> ExitCode {
         Some("budgets") => budgets::run(ci, flag("--record")),
         Some("coverage") => coverage::run(),
         Some("mutants") => {
-            let base = args
-                .windows(2)
-                .find(|w| w[0] == "--base")
-                .map(|w| w[1].clone());
-            gate::mutants(flag("--all"), base.as_deref())
+            let value = |name: &str| args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());
+            gate::mutants(
+                flag("--all"),
+                value("--base").as_deref(),
+                value("--shard").as_deref(),
+                value("--jobs").as_deref(),
+            )
         }
         _ => {
             eprint!("{USAGE}");

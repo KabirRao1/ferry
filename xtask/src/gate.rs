@@ -70,7 +70,7 @@ pub fn run(ci: bool, skip_mutants: bool) -> Result {
                     println!("mutants: skipped by --skip-mutants");
                     Ok(())
                 } else {
-                    mutants(false, None)
+                    mutants(false, None, None, None)
                 }
             }),
         ),
@@ -101,7 +101,9 @@ pub fn run(ci: bool, skip_mutants: bool) -> Result {
 /// Mutation-test `ferry-core`, `ferry-app` and `ferry-store`: the whole crates
 /// with `all`, otherwise only code changed relative to `base` (default:
 /// `origin/main` if it exists, else `HEAD`). Untracked files are not in the diff.
-pub fn mutants(all: bool, base: Option<&str>) -> Result {
+/// `shard` (`K/N`) tests only the K-th of N slices, so the nightly full run
+/// can be split across parallel jobs; `jobs` runs that many builds at once.
+pub fn mutants(all: bool, base: Option<&str>, shard: Option<&str>, jobs: Option<&str>) -> Result {
     let mut cmd = util::cargo();
     cmd.args([
         "mutants",
@@ -112,6 +114,12 @@ pub fn mutants(all: bool, base: Option<&str>) -> Result {
     ]);
     for krate in MUTATED {
         cmd.args(["--package", krate]);
+    }
+    if let Some(shard) = shard {
+        cmd.args(["--shard", shard]);
+    }
+    if let Some(jobs) = jobs {
+        cmd.args(["--jobs", jobs]);
     }
     if !all {
         let base = match base {
