@@ -193,3 +193,31 @@ fn f06_ac6_output_limit_is_exact() {
     // Scalars have no line breaks and ignore the limit.
     assert_eq!(pretty_within(b"12345", 0).as_deref(), Some(&b"12345"[..]));
 }
+
+// --- F22-AC4 JSONPath ----------------------------------------------------------------
+
+#[test]
+fn f22_ac4_jsonpath_results_as_a_pretty_array() {
+    use ferry_core::json::filter;
+    let body = br#"{"store":{"book":[{"author":"Ada","price":8},{"author":"Grace","price":22}]}}"#;
+    let out = filter(body, "$.store.book[*].author").unwrap();
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        "[\n  \"Ada\",\n  \"Grace\"\n]"
+    );
+    let out = filter(body, "$..book[?@.price > 10]").unwrap();
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        "[\n  {\n    \"author\": \"Grace\",\n    \"price\": 22\n  }\n]"
+    );
+    assert_eq!(filter(body, "$.nothing").unwrap(), b"[]");
+}
+
+#[test]
+fn f22_ac4_invalid_expressions_and_bodies() {
+    use ferry_core::json::filter;
+    let error = filter(b"{}", "store.book").unwrap_err();
+    assert!(error.starts_with("Invalid JSONPath: "), "{error}");
+    let error = filter(b"{not json", "$").unwrap_err();
+    assert!(error.starts_with("Invalid JSON: "), "{error}");
+}

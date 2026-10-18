@@ -18,6 +18,7 @@ fastrand = "2"
 ferry-core.workspace = true
 ferry-http.workspace = true
 ferry-store.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

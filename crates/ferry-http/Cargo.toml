@@ -13,7 +13,7 @@ homepage.workspace = true
 bytes.workspace = true
 ferry-core.workspace = true
 # rustls with the `ring` provider: builds with only a C compiler (no CMake/NASM).
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "gzip", "brotli", "deflate", "zstd", "multipart"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "gzip", "brotli", "deflate", "zstd", "multipart", "cookies"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio = { workspace = true, features = ["fs"] }
 tokio-util.workspace = true

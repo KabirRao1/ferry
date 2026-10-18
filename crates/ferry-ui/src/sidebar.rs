@@ -7,7 +7,8 @@ use ferry_app::{
 };
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, button, column, container, mouse_area, row, scrollable, space, text, tooltip,
+    Column, button, column, container, mouse_area, row, scrollable, space, text, text_input,
+    tooltip,
 };
 use iced::{Alignment, Element as IcedElement, Fill, Font, font};
 
@@ -24,6 +25,10 @@ pub const NEW_COLLECTION: &str = "New Collection";
 pub const NEW_ENVIRONMENT: &str = "New Environment";
 pub const GLOBALS: &str = "Globals";
 pub const NO_RESULTS: &str = "No saved requests match";
+pub const NO_HISTORY: &str = "No history yet";
+pub const NO_HISTORY_MATCH: &str = "No requests in history match";
+/// Placeholder of the history search field.
+pub const HISTORY_SEARCH: &str = "Search history";
 
 fn app(message: AppMessage) -> Message {
     Message::App(message)
@@ -55,7 +60,7 @@ pub fn view(state: &App) -> Element<'_, Message> {
         match selected {
             SidebarSection::Collections => collections(state),
             SidebarSection::Environments => environments(state),
-            SidebarSection::History => history_placeholder(),
+            SidebarSection::History => history(state),
         }
     } else {
         search_results(state)
@@ -414,16 +419,102 @@ fn env_row<'a>(
 
 // --- history and search -------------------------------------------------------------------
 
-fn history_placeholder<'a>() -> Element<'a, Message> {
+/// Sent requests, newest first, grouped by day, with a search field
+/// (F10-AC3..AC5).
+fn history(state: &App) -> Element<'_, Message> {
+    let mut header = row![text("History").size(TEXT).font(bold()), space().width(Fill)]
+        .align_y(Alignment::Center)
+        .padding([8, 10]);
+    if !state.history().entries.is_empty() {
+        header = header.push(
+            button(text("Clear").size(SMALL))
+                .on_press(app(AppMessage::ClearHistory))
+                .padding([2, 8])
+                .style(theme::secondary),
+        );
+    }
+    let header = column![header, screen::hline()];
+    if state.history().entries.is_empty() {
+        return column![
+            header,
+            container(coming(
+                NO_HISTORY,
+                "Every request you send is listed here, searchable and one click to open again.",
+            ))
+            .padding(16),
+        ]
+        .into();
+    }
+    let search = container(
+        text_input(HISTORY_SEARCH, state.history_search())
+            .on_input(|s| app(AppMessage::HistorySearch(s)))
+            .size(TEXT)
+            .padding([5, 8])
+            .style(theme::input),
+    )
+    .padding([8, 10]);
+    let groups = state.history_groups();
+    if groups.is_empty() {
+        return column![
+            header,
+            search,
+            container(text(NO_HISTORY_MATCH).size(TEXT).style(theme::muted)).padding(16),
+        ]
+        .into();
+    }
+    let mut rows: Vec<Element<'_, Message>> = Vec::new();
+    for (day, entries) in groups {
+        rows.push(
+            container(text(day).size(SMALL).font(bold()).style(theme::muted))
+                .padding([8, 12])
+                .into(),
+        );
+        for entry in entries {
+            rows.push(history_row(entry));
+        }
+    }
     column![
-        panel_header("History", None),
-        container(coming(
-            "No history yet",
-            "Every request you send will be listed here, searchable and one click to open again.",
-        ))
-        .padding(16),
+        header,
+        search,
+        scrollable(Column::with_children(rows).padding(iced::Padding::ZERO.bottom(4))).height(Fill)
     ]
     .into()
+}
+
+fn history_row(entry: &ferry_app::HistoryEntry) -> Element<'_, Message> {
+    let method = entry.method.as_str();
+    let failed = matches!(entry.outcome, ferry_app::HistoryOutcome::Failed { .. });
+    let url = text(entry.url.as_str()).size(TEXT).wrapping(Wrapping::None);
+    let label = row![
+        text(short_method(method).to_owned())
+            .size(10)
+            .font(bold())
+            .color(theme::method_color(method))
+            .width(38),
+        container(if failed { url.style(theme::error) } else { url })
+            .width(Fill)
+            .clip(true),
+    ]
+    .align_y(Alignment::Center);
+    let open = button(label)
+        .on_press(app(AppMessage::OpenHistory(entry.id)))
+        .padding([5, 6])
+        .width(Fill)
+        .style(theme::flat(false));
+    let delete = tooltip(
+        button(text("×").size(TEXT).style(theme::muted))
+            .on_press(app(AppMessage::DeleteHistory(entry.id)))
+            .padding([2, 6])
+            .style(theme::flat(false)),
+        container(text("Delete").size(SMALL))
+            .padding(6)
+            .style(theme::dialog),
+        tooltip::Position::Left,
+    );
+    row![open, delete]
+        .align_y(Alignment::Center)
+        .padding([0, 6])
+        .into()
 }
 
 fn search_results(state: &App) -> Element<'_, Message> {

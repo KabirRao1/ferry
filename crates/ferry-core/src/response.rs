@@ -29,6 +29,15 @@ pub struct Timing {
 }
 
 // CONTRACT
+/// A `Set-Cookie` header received during a send, with the URL it came
+/// from (F17-AC1). Redirect hops included.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetCookie {
+    pub url: String,
+    pub header: String,
+}
+
+// CONTRACT
 /// A complete response.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Response {
@@ -40,6 +49,14 @@ pub struct Response {
     /// Time from sending the request to receiving the whole body.
     pub elapsed: Duration,
     pub timing: Timing,
+    /// The URL of the final response, after redirects.
+    pub url: String,
+    /// The request headers as sent on the first hop, including the ones the
+    /// client adds and the jar's `Cookie` (F18-AC1).
+    pub sent: Vec<Header>,
+    /// Cookies to store in the jar, from every hop (F17-AC1). Empty when the
+    /// jar was off for the request.
+    pub set_cookies: Vec<SetCookie>,
 }
 
 impl Response {

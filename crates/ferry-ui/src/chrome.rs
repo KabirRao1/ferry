@@ -297,14 +297,22 @@ pub fn footer<'a>(state: &'a App, save_error: Option<&'a str>) -> Element<'a, Me
     if let Some(error) = save_error {
         status = status.push(text(error).size(SMALL).style(theme::error));
     }
+    let console = button(text("Console").size(SMALL))
+        .on_press(app(AppMessage::ToggleConsole))
+        .padding([3, 8])
+        .style(theme::flat(state.console().open));
+    let cookies = button(text("Cookies").size(SMALL))
+        .on_press(app(AppMessage::OpenCookies))
+        .padding([3, 8])
+        .style(theme::flat(false));
     container(
         row![
             toggle,
-            later("Console", "The console arrives later in Phase 3"),
+            console,
             space().width(Fill),
             status,
             space().width(12),
-            later("Cookies", "The cookie manager arrives later in Phase 3"),
+            cookies,
             later("Runner", "The Collection Runner arrives in Phase 4"),
             text(concat!("Ferry ", env!("CARGO_PKG_VERSION")))
                 .size(SMALL)

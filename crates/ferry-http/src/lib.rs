@@ -3,6 +3,7 @@
 //! Tested only against local servers. DNS goes through an injectable
 //! [`Resolver`], so lookup failures are testable without a network.
 
+mod cookies;
 mod timing;
 
 use std::error::Error;
@@ -15,8 +16,10 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use ferry_core::body::guess_content_type;
+use ferry_core::cookies::Jar;
 use ferry_core::request::{PartValue, RequestBody, SendOptions};
 use ferry_core::response::{Header, Timing};
+use reqwest::header::{ACCEPT, ACCEPT_ENCODING, COOKIE, HeaderValue, USER_AGENT};
 
 pub use ferry_core::error::SendError;
 pub use ferry_core::request::Request;
@@ -27,6 +30,19 @@ use timing::{Marks, TimingLayer};
 
 /// Redirects followed when [`SendOptions::follow_redirects`] is on (F05-AC4).
 pub const MAX_REDIRECTS: usize = 10;
+/// The `Accept-Encoding` the client sends unless overridden (F02-AC3).
+pub const ACCEPT_ENCODINGS: &str = "gzip, deflate, br, zstd";
+
+// CONTRACT
+/// The cookie jar for one send (F17): a snapshot of the app's jar and the
+/// time to judge expiry by. Cookies received come back in
+/// [`Response::set_cookies`].
+#[derive(Debug, Clone)]
+pub struct Cookies {
+    pub jar: Jar,
+    /// Milliseconds since the Unix epoch.
+    pub now: i64,
+}
 
 /// Future returned by [`Resolver::resolve`].
 pub type Resolving = Pin<Box<dyn Future<Output = io::Result<Vec<SocketAddr>>> + Send>>;
@@ -114,6 +130,7 @@ fn build(config: &Config, options: SendOptions) -> Result<reqwest::Client, SendE
         .redirect(redirect)
         .tls_danger_accept_invalid_certs(!options.verify_tls)
         .dns_resolver(Arc::new(ResolverAdapter(Arc::clone(&config.resolver))))
+        .cookie_provider(Arc::new(cookies::Provider))
         .connector_layer(TimingLayer)
         .build()
         .map_err(|e| SendError::Other {
@@ -153,20 +170,39 @@ impl Client {
     /// Send `request` and read the whole body, unless `cancel` fires first.
     /// Never panics; every failure becomes [`Outcome::Failed`].
     pub async fn send(&self, request: &Request, cancel: &CancellationToken) -> Outcome {
+        self.send_with(request, None, cancel).await
+    }
+
+    // CONTRACT
+    /// [`Client::send`] with a cookie jar, used unless the request turns it
+    /// off (F17-AC2, F17-AC3).
+    pub async fn send_with(
+        &self,
+        request: &Request,
+        cookies: Option<Cookies>,
+        cancel: &CancellationToken,
+    ) -> Outcome {
         if cancel.is_cancelled() {
             return Outcome::Cancelled;
         }
+        let scope = cookies
+            .filter(|_| request.options.cookies)
+            .map(|c| cookies::Scope::new(c.jar, c.now));
         tokio::select! {
             biased;
             () = cancel.cancelled() => Outcome::Cancelled,
-            result = self.exchange(request) => match result {
+            result = self.exchange(request, scope) => match result {
                 Ok(response) => Outcome::Completed(response),
                 Err(error) => Outcome::Failed(error),
             },
         }
     }
 
-    async fn exchange(&self, request: &Request) -> Result<Response, SendError> {
+    async fn exchange(
+        &self,
+        request: &Request,
+        scope: Option<cookies::Scope>,
+    ) -> Result<Response, SendError> {
         let client = self.clients.get(request.options)?;
         let method =
             reqwest::Method::from_bytes(request.method.as_str().as_bytes()).map_err(|e| {
@@ -196,12 +232,53 @@ impl Client {
             }
         };
 
+        let mut built = builder.build().map_err(|e| SendError::Other {
+            detail: describe(&e),
+        })?;
+        // reqwest skips the jar when a Cookie header is present, so append
+        // the jar's cookies to the user's own (F17-AC2).
+        if let Some(scope) = &scope
+            && let Some(jar) = scope.header_for(&request.url)
+            && let Some(user) = built.headers().get(COOKIE)
+        {
+            let merged = format!("{}; {jar}", String::from_utf8_lossy(user.as_bytes()));
+            if let Ok(value) = HeaderValue::from_str(&merged) {
+                built.headers_mut().insert(COOKIE, value);
+            }
+        }
+        let mut sent: Vec<Header> = built
+            .headers()
+            .iter()
+            .map(|(name, value)| Header {
+                name: name.as_str().to_owned(),
+                value: String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            })
+            .collect();
+        for (name, value) in [
+            (USER_AGENT, ferry_core::draft::USER_AGENT),
+            (ACCEPT, "*/*"),
+            (ACCEPT_ENCODING, ACCEPT_ENCODINGS),
+        ] {
+            if !built.headers().contains_key(&name) {
+                sent.push(Header {
+                    name: name.as_str().to_owned(),
+                    value: value.to_owned(),
+                });
+            }
+        }
+
         let marks = Marks::new();
         let start = Instant::now();
-        let response = timing::scope(&marks, builder.send())
-            .await
-            .map_err(|e| self.classify(&e, &request.url))?;
+        // `execute` consults the jar as soon as it is called, so it must run
+        // inside the scope: wrap it in a future rather than calling it here.
+        let response = cookies::with(
+            scope.clone(),
+            timing::scope(&marks, async move { client.execute(built).await }),
+        )
+        .await
+        .map_err(|e| self.classify(&e, &request.url))?;
         let headers_at = Instant::now();
+        let url = response.url().to_string();
         let status = response.status();
         let headers = response
             .headers()
@@ -218,6 +295,21 @@ impl Client {
         let end = Instant::now();
         let (dns, connect_total) = marks.take();
         let connect = connect_total.map(|total| total.saturating_sub(dns.unwrap_or_default()));
+        let set_cookies = match scope {
+            Some(scope) => {
+                let (received, first_sent) = scope.take();
+                if let Some(cookie) = first_sent
+                    && !sent.iter().any(|h| h.name == COOKIE.as_str())
+                {
+                    sent.push(Header {
+                        name: COOKIE.as_str().to_owned(),
+                        value: cookie,
+                    });
+                }
+                received
+            }
+            None => Vec::new(),
+        };
         Ok(Response {
             status: status.as_u16(),
             reason: status.canonical_reason().unwrap_or_default().to_owned(),
@@ -230,6 +322,9 @@ impl Client {
                 waiting: (headers_at - start).saturating_sub(connect_total.unwrap_or_default()),
                 download: end - headers_at,
             },
+            url,
+            sent,
+            set_cookies,
         })
     }
 

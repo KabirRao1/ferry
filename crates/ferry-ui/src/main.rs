@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use ferry_app::{
-    App, Client, Config, Loaded, Message, RealFs, Session, SessionStore, WorkspaceStore, data_dir,
+    App, Client, Config, CookieStore, HistoryStore, Loaded, Message, RealFs, Restored, Session,
+    SessionStore, WorkspaceStore, data_dir,
 };
 use ferry_ui::screen::TEXT;
 use ferry_ui::shell::Shell;
@@ -26,14 +27,17 @@ fn main() -> iced::Result {
     iced::application(
         move || {
             let started = first.lock().unwrap_or_else(PoisonError::into_inner).take();
-            let Some((app, store, workspace)) = started else {
+            let Some(started) = started else {
                 return Shell::new(App::default(), client.clone(), None);
             };
-            let shell = Shell::new(app, client.clone(), store);
-            match workspace {
-                Some(workspace) => shell.with_workspace(workspace),
-                None => shell,
+            let mut shell = Shell::new(started.app, client.clone(), started.session);
+            if let Some(workspace) = started.workspace {
+                shell = shell.with_workspace(workspace);
             }
+            if let Some((history, cookies)) = started.data {
+                shell = shell.with_data(history, cookies);
+            }
+            shell
         },
         Shell::update,
         Shell::view,
@@ -50,14 +54,27 @@ fn main() -> iced::Result {
     .run()
 }
 
-type Started = (
-    App,
-    Option<SessionStore<RealFs>>,
-    Option<WorkspaceStore<RealFs>>,
-);
+/// What startup restored, and where to save it.
+struct Started {
+    app: App,
+    session: Option<SessionStore<RealFs>>,
+    workspace: Option<WorkspaceStore<RealFs>>,
+    data: Option<(HistoryStore<RealFs>, CookieStore<RealFs>)>,
+}
 
-/// The restored workbench, where to save it, and the workspace (F07-AC5,
-/// F09-AC1).
+impl Started {
+    fn bare(app: App) -> Self {
+        Self {
+            app,
+            session: None,
+            workspace: None,
+            data: None,
+        }
+    }
+}
+
+/// The restored workbench, history and cookie jar, where to save them, and
+/// the workspace (F07-AC5, F09-AC1, F10-AC6, F17-AC6).
 ///
 /// Under `FERRY_PROBE` (performance budgets) nothing is read or written, and
 /// `FERRY_PROBE_TABS` opens that many tabs. `FERRY_DATA_DIR` overrides the
@@ -72,14 +89,14 @@ fn startup() -> Started {
         for _ in 1..tabs {
             app.update(Message::NewTab);
         }
-        return (app, None, None);
+        return Started::bare(app);
     }
     let dir = std::env::var_os("FERRY_DATA_DIR")
         .map(PathBuf::from)
         .or_else(|| data_dir(|name| std::env::var(name).ok()));
     let Some(dir) = dir else {
         eprintln!("ferry: no data directory (set FERRY_DATA_DIR); nothing will be saved");
-        return (App::default(), None, None);
+        return Started::bare(App::default());
     };
     let store = SessionStore::new(RealFs, &dir);
     let session = match store.load() {
@@ -105,10 +122,39 @@ fn startup() -> Started {
             root.display()
         );
     }
+    let history = HistoryStore::new(RealFs, &dir);
+    let cookies = CookieStore::new(RealFs, &dir);
+    let now = now_millis();
     let app = App::restore(session)
         .with_workspace(workspace.load())
-        .with_workspace_root(root.clone());
-    (app, Some(store), Some(workspace))
+        .with_workspace_root(root.clone())
+        .with_history(restored("history", history.load()))
+        .with_cookies(restored("cookies", cookies.load(now)));
+    Started {
+        app,
+        session: Some(store),
+        workspace: Some(workspace),
+        data: Some((history, cookies)),
+    }
+}
+
+/// Milliseconds since the Unix epoch.
+fn now_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// The loaded value, reporting an unreadable file (F10-AC6, F17-AC6).
+fn restored<T: Default>(what: &str, loaded: Restored<T>) -> T {
+    if let Restored::Unreadable { reason, backup } = &loaded {
+        let kept = backup.as_ref().map_or_else(
+            || "it could not be moved aside".to_owned(),
+            |b| format!("it was moved to {}", b.display()),
+        );
+        eprintln!("ferry: could not restore {what} ({reason}); {kept}; starting empty");
+    }
+    loaded.or_default()
 }
 
 /// `FERRY_WORKSPACE`, else the folder chosen with `Open Workspace…`, else

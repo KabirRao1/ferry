@@ -318,3 +318,27 @@ pub fn choice(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Styl
         style
     }
 }
+
+/// A search match in the response body (F06-AC8).
+pub fn find_match(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color { a: 0.35, ..WARNING })),
+        border: Border {
+            radius: 2.0.into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    }
+}
+
+/// The current search match: filled, so it stands out from the others.
+pub fn find_current(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(WARNING)),
+        border: Border {
+            radius: 2.0.into(),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    }
+}

@@ -1,6 +1,11 @@
 # Status
 
-**Phase:** 3 in progress (user approved 2026-10-17).
+**Phase:** 3 in progress (user approved 2026-10-17). Paused by the user.
+
+## Phase 3 progress (resume here)
+- Committed (18ef86d, not pushed): F08 variables and environments, F09 collections and workspace, F04-AC6, F07-AC7, F14-AC6, F32-AC2..AC4, with UI.
+- Committed locally (not pushed): F10 history, F17 cookies, F18 console, F32-AC1 Save as Example, F06-AC8 search in body, F22-AC4 JSONPath filter, all with UI and shell effects; history and cookies load at startup and the jar saves on exit. 530 tests pass; snapshots reviewed. Real-binary smoke run: an unreadable history.toml moves to .bak, expired cookies drop on load, the jar is written on a graceful close.
+- Still to do: F22 Preview web view (wry, ADR-0041) and Open in Browser; mutation testing of the Phase 3 diff; fuzz targets for cookies, variables and the TOML formats; coverage; budgets (binary re-baseline for wry); docs (FEATURES, ARCHITECTURE, README, CHANGELOG, FINDINGS) and the phase report; push and check CI.
 **Next step:** Phase 3: F08 variables and environments, F09 collections, F10 history, F17 cookies, F18 console, F32 saved examples, F22 Preview and Visualize (see `docs/SPEC.md#phases`).
 
 ## Phase 2 results

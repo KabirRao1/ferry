@@ -1,6 +1,9 @@
-//! Human-readable formatting of sizes and durations (F06-AC2, F06-AC3).
+//! Human-readable formatting of sizes and durations (F06-AC2, F06-AC3),
+//! and dates.
 
 use std::time::Duration;
+
+pub use crate::time::http_date;
 
 // CONTRACT
 /// Byte count in binary units: `512 B`, `1.5 KB`, `50.0 MB`, `2.0 GB`.

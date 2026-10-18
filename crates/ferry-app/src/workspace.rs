@@ -69,6 +69,10 @@ pub enum Dialog {
     },
     /// `Delete "<name>"?` or `Delete environment "<name>"?`.
     ConfirmDelete { target: Target, name: String },
+    /// `Clear all history?` (F10-AC5).
+    ClearHistory,
+    /// The cookie manager (F17-AC5).
+    Cookies(crate::activity::CookieManager),
 }
 
 // CONTRACT
@@ -870,6 +874,7 @@ impl App {
                 self.dialog = None;
                 self.delete(&target)
             }
+            Dialog::ClearHistory | Dialog::Cookies(_) => self.confirm_activity_dialog(),
         }
     }
 

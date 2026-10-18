@@ -224,7 +224,7 @@ pub fn tab_label(tab: &Tab, which: RequestTab) -> String {
 }
 
 fn sub_tabs(tab: &Tab) -> Element<'_, Message> {
-    row(RequestTab::ALL.into_iter().map(|which| {
+    let tabs = row(RequestTab::ALL.into_iter().map(|which| {
         let selected = which == tab.request_tab;
         column![
             button(text(tab_label(tab, which)).size(TEXT))
@@ -236,8 +236,15 @@ fn sub_tabs(tab: &Tab) -> Element<'_, Message> {
         .width(Length::Shrink)
         .into()
     }))
-    .spacing(2)
-    .into()
+    .spacing(2);
+    // The cookie manager, under Send as in Postman (F17-AC5).
+    let cookies = button(text("Cookies").size(SMALL).style(theme::accent))
+        .on_press(app(AppMessage::OpenCookies))
+        .padding([4, 8])
+        .style(theme::flat(false));
+    row![tabs, space().width(Fill), cookies]
+        .align_y(Alignment::Center)
+        .into()
 }
 
 /// The 2 px line under the selected sub-tab.
@@ -683,6 +690,12 @@ fn settings(tab: &Tab) -> Element<'_, Message> {
             "Verify certificates when sending a request. Verification failures abort the request.",
             o.verify_tls,
             Edit::VerifyTls,
+        ),
+        setting(
+            "Send and store cookies",
+            "Send cookies from the cookie jar with this request and store the ones it receives.",
+            o.cookies,
+            Edit::SendCookies,
         ),
     ]
     .spacing(18)

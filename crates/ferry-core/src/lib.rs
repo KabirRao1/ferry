@@ -6,10 +6,12 @@
 pub mod auth;
 pub mod body;
 pub mod collection;
+pub mod cookies;
 pub mod draft;
 pub mod environment;
 pub mod error;
 pub mod format;
+pub mod history;
 pub mod json;
 pub mod kv;
 pub mod names;

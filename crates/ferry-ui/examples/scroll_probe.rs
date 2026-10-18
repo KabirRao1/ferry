@@ -91,7 +91,7 @@ fn report(frames: &[Instant]) {
 
 fn view(state: &Probe) -> iced::Element<'_, Message> {
     match &state.view {
-        Some(v) => ferry_ui::body_view::view(v).map(Message::Body),
+        Some(v) => ferry_ui::body_view::view(v, None).map(Message::Body),
         None => iced::widget::text("failed to index body").into(),
     }
 }

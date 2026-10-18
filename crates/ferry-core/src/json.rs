@@ -280,3 +280,22 @@ fn copy_number(input: &[u8], start: usize, out: &mut Vec<u8>) -> Option<usize> {
     out.extend_from_slice(input.get(start..i)?);
     Some(i)
 }
+
+/// Largest body the `JSONPath` filter accepts (F22-AC4).
+pub const MAX_FILTER_BODY: usize = 10 * 1024 * 1024;
+
+// CONTRACT
+/// The results of the `JSONPath` (RFC 9535) `expression` on the JSON `body`,
+/// as a JSON array indented with 2 spaces (F22-AC4).
+///
+/// # Errors
+/// `Invalid JSONPath: <reason>`, or `Invalid JSON: <reason>` for a body
+/// that does not parse.
+pub fn filter(body: &[u8], expression: &str) -> Result<Vec<u8>, String> {
+    let value: serde_json::Value =
+        serde_json::from_slice(body).map_err(|e| format!("Invalid JSON: {e}"))?;
+    let path = serde_json_path::JsonPath::parse(expression)
+        .map_err(|e| format!("Invalid JSONPath: {e}"))?;
+    let nodes: Vec<serde_json::Value> = path.query(&value).all().into_iter().cloned().collect();
+    serde_json::to_vec_pretty(&serde_json::Value::Array(nodes)).map_err(|e| e.to_string())
+}

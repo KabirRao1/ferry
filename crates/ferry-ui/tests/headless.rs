@@ -87,6 +87,9 @@ fn ok_response(body: &'static str, content_type: &str) -> Response {
             waiting: Duration::from_millis(25),
             download: Duration::from_millis(2),
         },
+        url: "https://api.test/users".into(),
+        sent: Vec::new(),
+        set_cookies: Vec::new(),
     }
 }
 
@@ -234,16 +237,13 @@ fn f14_ac5_later_features_explain_themselves_and_do_nothing() {
     assert!(has(&shell, "Scripts arrive in Phase 4"));
     assert!(has(&shell, "No collections yet"));
     // Disabled controls emit nothing.
-    for label in ["Console", "Runner", "No environment"] {
+    for label in ["Runner", "No environment"] {
         let got = messages(&shell, |ui| {
             let _ = ui.click(label);
         });
         assert!(got.is_empty(), "{label} emitted {got:?}");
     }
 
-    let mut app = app_with(ok_response("x", "text/plain"));
-    app.update(AppMessage::ResponseTabSelected(ResponseTab::Cookies));
-    assert!(has(&shell_for(app), "Cookies arrive in Phase 3"));
     let mut app = app_with(ok_response("x", "text/plain"));
     app.update(AppMessage::ResponseTabSelected(ResponseTab::TestResults));
     assert!(has(&shell_for(app), "Test results arrive in Phase 4"));
@@ -342,8 +342,21 @@ fn f05_ac1_f07_f14_keyboard_shortcuts() {
     assert_eq!(shortcut(Key::Named(Named::Enter), Modifiers::SHIFT), None);
     assert_eq!(shortcut(ch("t"), Modifiers::default()), None);
     assert_eq!(shortcut(Key::Named(Named::Tab), Modifiers::default()), None);
-    let release = iced::keyboard::Event::ModifiersChanged(Modifiers::COMMAND);
-    assert!(shell::shortcut(release).is_none());
+    assert_eq!(shortcut(ch("f"), cmd).as_deref(), Some("FindOpen"));
+    assert_eq!(
+        shortcut(Key::Named(Named::ArrowDown), Modifiers::default()).as_deref(),
+        Some("FindNext")
+    );
+    assert_eq!(
+        shortcut(Key::Named(Named::ArrowUp), Modifiers::default()).as_deref(),
+        Some("FindPrevious")
+    );
+    // Modifiers are tracked for Shift+Enter in the find bar.
+    let changed = iced::keyboard::Event::ModifiersChanged(Modifiers::SHIFT);
+    assert!(matches!(
+        shell::shortcut(changed),
+        Some(Message::Modifiers(m)) if m.shift()
+    ));
 }
 
 #[test]
@@ -682,7 +695,7 @@ fn f06_ac10_only_visible_lines_become_widgets() {
     let mut ui = Simulator::with_size(
         Settings::default(),
         Size::new(600.0, height),
-        body_view::view(&state),
+        body_view::view(&state, None),
     );
     assert!(ui.find("line-0").is_ok());
     assert!(ui.find("line-9").is_ok());
@@ -699,7 +712,7 @@ fn f06_ac10_scrolled_view_starts_at_top_line() {
     let mut ui = Simulator::with_size(
         Settings::default(),
         Size::new(600.0, 5.0 * LINE_HEIGHT),
-        body_view::view(&state),
+        body_view::view(&state, None),
     );
     assert!(ui.find("line-500").is_ok());
     assert!(ui.find("line-499").is_err());
@@ -711,7 +724,7 @@ fn f06_ac10_mouse_wheel_scrolls_by_lines() {
     let mut ui = Simulator::with_size(
         Settings::default(),
         Size::new(600.0, 200.0),
-        body_view::view(&state),
+        body_view::view(&state, None),
     );
     ui.point_at(iced::Point::new(100.0, 100.0));
     let _ = ui.simulate([iced::Event::Mouse(mouse::Event::WheelScrolled {
@@ -759,7 +772,7 @@ fn f06_ac7_hex_view_renders_offsets() {
     let mut ui = Simulator::with_size(
         Settings::default(),
         Size::new(800.0, 100.0),
-        body_view::view(&state),
+        body_view::view(&state, None),
     );
     assert!(ui.find(line.as_str()).is_ok());
 }
@@ -888,7 +901,7 @@ fn f06_ac10_snapshot_scrolled_body() {
     let mut ui = Simulator::with_size(
         Settings::default(),
         Size::new(480.0, 180.0),
-        body_view::view(&state),
+        body_view::view(&state, None),
     );
     let snap = ui.snapshot(&iced::Theme::Dark).unwrap();
     assert!(

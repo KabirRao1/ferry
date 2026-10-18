@@ -397,6 +397,7 @@ fn f05_ac4_ac5_options_and_method_carried_over() {
     d.options = SendOptions {
         follow_redirects: false,
         verify_tls: false,
+        cookies: true,
     };
     let r = d.build().unwrap();
     assert_eq!(r.method.as_str(), "PURGE");
@@ -405,7 +406,9 @@ fn f05_ac4_ac5_options_and_method_carried_over() {
         SendOptions::default(),
         SendOptions {
             follow_redirects: true,
-            verify_tls: true
+            verify_tls: true,
+            // Added by F17-AC3 (Phase 3).
+            cookies: true
         }
     );
 }

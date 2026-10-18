@@ -158,6 +158,9 @@ pub struct SendOptions {
     /// Reject untrusted certificates.
     #[serde(skip_serializing_if = "crate::is_true")]
     pub verify_tls: bool,
+    /// Send cookies from the jar and store the ones received (F17-AC3).
+    #[serde(skip_serializing_if = "crate::is_true")]
+    pub cookies: bool,
 }
 
 impl Default for SendOptions {
@@ -165,6 +168,7 @@ impl Default for SendOptions {
         Self {
             follow_redirects: true,
             verify_tls: true,
+            cookies: true,
         }
     }
 }

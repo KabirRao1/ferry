@@ -1,6 +1,7 @@
 //! Top-level window: wires [`App`] to iced, runs effects (sends, file
-//! dialogs, session saves, workspace changes), watches the workspace
-//! folder, keeps editor widgets in sync, handles shortcuts.
+//! dialogs, session, history and cookie saves, workspace changes, searches),
+//! watches the workspace folder, keeps editor widgets in sync, handles
+//! shortcuts.
 
 use std::hash::Hash;
 use std::path::PathBuf;
@@ -8,7 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ferry_app::{
-    App, Client, Doc, Edit, Effect, FileTarget, RealFs, SessionStore, Table, WorkspaceStore,
+    App, Client, CookieStore, Doc, Edit, Effect, FileTarget, HistoryStore, RealFs, SessionStore,
+    Table, WorkspaceStore, history_response, run_find,
 };
 use iced::futures::Stream;
 use iced::keyboard::{self, Key, key::Named};
@@ -42,8 +44,14 @@ pub enum Message {
     /// A frame was rendered (only while probing startup).
     Frame,
     CloseRequested(window::Id),
-    /// A session save finished; `Some` carries the error text.
+    /// A session, history or cookie save finished; `Some` carries the error
+    /// text.
     Saved(Option<String>),
+    /// Enter in the find bar: the next match, or the previous one with
+    /// Shift (F06-AC8).
+    FindSubmit,
+    /// The keyboard modifiers changed.
+    Modifiers(keyboard::Modifiers),
 }
 
 impl From<ferry_app::Message> for Message {
@@ -64,6 +72,9 @@ pub struct Shell {
     resizing: bool,
     /// Last session save error, shown in the footer.
     save_error: Option<String>,
+    history: Option<Arc<HistoryStore<RealFs>>>,
+    cookies: Option<Arc<CookieStore<RealFs>>>,
+    modifiers: keyboard::Modifiers,
 }
 
 impl Shell {
@@ -79,7 +90,23 @@ impl Shell {
             probe: Probe::from_env(),
             resizing: false,
             save_error: None,
+            history: None,
+            cookies: None,
+            modifiers: keyboard::Modifiers::default(),
         }
+    }
+
+    /// Save history to `history` and the cookie jar to `cookies` (F10-AC6,
+    /// F17-AC6).
+    #[must_use]
+    pub fn with_data(
+        mut self,
+        history: HistoryStore<RealFs>,
+        cookies: CookieStore<RealFs>,
+    ) -> Self {
+        self.history = Some(Arc::new(history));
+        self.cookies = Some(Arc::new(cookies));
+        self
     }
 
     /// Read and write the workspace in `store` (F09).
@@ -107,7 +134,29 @@ impl Shell {
                 self.probe.frame();
                 Task::none()
             }
+            Message::App(ferry_app::Message::FindOpen) => {
+                let task = self.update_app(ferry_app::Message::FindOpen);
+                let focus = iced::widget::operation::focus(iced::widget::Id::new(
+                    crate::response::FIND_INPUT,
+                ));
+                Task::batch([task, focus])
+            }
+            // Escape closes a dialog, else the find bar (F06-AC8).
+            Message::App(ferry_app::Message::DialogCancel)
+                if self.app.dialog().is_none() && self.app.confirm_close().is_none() =>
+            {
+                self.update_app(ferry_app::Message::FindClose)
+            }
             Message::App(message) => self.update_app(message),
+            Message::FindSubmit => self.update_app(if self.modifiers.shift() {
+                ferry_app::Message::FindPrevious
+            } else {
+                ferry_app::Message::FindNext
+            }),
+            Message::Modifiers(modifiers) => {
+                self.modifiers = modifiers;
+                Task::none()
+            }
             Message::RawAction(action) => {
                 let id = self.app.tab().id;
                 match self.editors.get_mut(id) {
@@ -184,10 +233,79 @@ impl Shell {
     }
 
     fn update_app(&mut self, message: ferry_app::Message) -> Task<Message> {
-        let Some(effect) = self.app.update(message) else {
-            return Task::none();
-        };
+        match self.app.update(message) {
+            Some(effect) => self.run(effect),
+            None => Task::none(),
+        }
+    }
+
+    /// Run an effect off the UI thread.
+    fn run(&mut self, effect: Effect) -> Task<Message> {
         match effect {
+            Effect::Batch(effects) => {
+                Task::batch(effects.into_iter().map(|effect| self.run(effect)))
+            }
+            effect @ (Effect::Find { .. } | Effect::Filter { .. }) => Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || run_find(effect))
+                        .await
+                        .ok()
+                        .flatten()
+                },
+                |message| message.map(Message::App),
+            )
+            .and_then(Task::done),
+            Effect::History {
+                history,
+                body,
+                remove,
+            } => match &self.history {
+                Some(store) => {
+                    let store = Arc::clone(store);
+                    blocking(move || {
+                        let saved = store.save(&history).map_err(|e| e.to_string());
+                        let body = match &body {
+                            Some((id, bytes)) => {
+                                store.write_body(*id, bytes).map_err(|e| e.to_string())
+                            }
+                            None => Ok(()),
+                        };
+                        store.remove_bodies(&remove);
+                        saved.and(body).err()
+                    })
+                }
+                None => Task::none(),
+            },
+            Effect::LoadHistory { tab, id, entry } => {
+                let store = self.history.clone();
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            let body = store.and_then(|s| s.read_body(entry.id));
+                            history_response(&entry, body)
+                        })
+                        .await
+                        .ok()
+                    },
+                    move |finished| {
+                        finished.map(|result| {
+                            Message::App(ferry_app::Message::Finished {
+                                tab,
+                                id,
+                                result: Arc::new(result),
+                            })
+                        })
+                    },
+                )
+                .and_then(Task::done)
+            }
+            Effect::SaveCookies(jar) => match &self.cookies {
+                Some(store) => {
+                    let store = Arc::clone(store);
+                    blocking(move || store.save(&jar).err().map(|e| e.to_string()))
+                }
+                None => Task::none(),
+            },
             effect @ Effect::Send { .. } => {
                 Task::perform(ferry_app::run(effect, self.client.clone()), |message| {
                     message.map(Message::App)
@@ -285,10 +403,16 @@ impl Shell {
         )
     }
 
-    /// Save synchronously, for window close.
+    /// Save synchronously, for window close: the session and the cookie
+    /// jar (F17-AC6).
     fn save_now(&mut self) {
         if let Some(store) = &self.store
             && let Err(e) = store.save(&self.app.session())
+        {
+            self.save_error = Some(e.to_string());
+        }
+        if let Some(store) = &self.cookies
+            && let Err(e) = store.save(self.app.cookies())
         {
             self.save_error = Some(e.to_string());
         }
@@ -353,6 +477,18 @@ fn watch_workspace(root: &WatchRoot) -> impl Stream<Item = Message> + use<> {
     })
 }
 
+/// Run `save` on a worker thread and report its error, if any.
+fn blocking(save: impl FnOnce() -> Option<String> + Send + 'static) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(save)
+                .await
+                .unwrap_or_else(|e| Some(e.to_string()))
+        },
+        Message::Saved,
+    )
+}
+
 /// Ask the user for a workspace folder (F09-AC14).
 async fn pick_folder() -> Option<PathBuf> {
     rfd::AsyncFileDialog::new()
@@ -375,12 +511,15 @@ async fn pick_file(target: FileTarget) -> Option<std::path::PathBuf> {
         .map(|handle| handle.path().to_path_buf())
 }
 
-/// Global keyboard shortcuts (F05-AC1, F07-AC1..AC3, F09-AC5, F14-AC4).
+/// Global keyboard shortcuts (F05-AC1, F07-AC1..AC3, F09-AC5, F14-AC4,
+/// F06-AC8).
 #[must_use]
 pub fn shortcut(event: keyboard::Event) -> Option<Message> {
     use ferry_app::Message as M;
-    let keyboard::Event::KeyPressed { key, modifiers, .. } = event else {
-        return None;
+    let (key, modifiers) = match event {
+        keyboard::Event::KeyPressed { key, modifiers, .. } => (key, modifiers),
+        keyboard::Event::ModifiersChanged(modifiers) => return Some(Message::Modifiers(modifiers)),
+        keyboard::Event::KeyReleased { .. } => return None,
     };
     let message = match key.as_ref() {
         Key::Named(Named::Enter) if modifiers.command() => M::SendPressed,
@@ -390,6 +529,10 @@ pub fn shortcut(event: keyboard::Event) -> Option<Message> {
         Key::Character("w") if modifiers.command() => M::CloseActiveTab,
         Key::Character("b") if modifiers.command() => M::ToggleSidebar,
         Key::Character("s") if modifiers.command() => M::Save,
+        Key::Character("f") if modifiers.command() => M::FindOpen,
+        // Matches of an open find bar; ignored otherwise.
+        Key::Named(Named::ArrowDown) => M::FindNext,
+        Key::Named(Named::ArrowUp) => M::FindPrevious,
         Key::Named(Named::Escape) => M::DialogCancel,
         _ => return None,
     };

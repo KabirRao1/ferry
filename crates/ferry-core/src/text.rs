@@ -196,3 +196,47 @@ pub fn looks_binary(body: &[u8]) -> bool {
         Err(e) => e.error_len().is_some() || head.len() == body.len(),
     }
 }
+
+/// Most matches a search reports (F06-AC8).
+pub const MAX_MATCHES: usize = 10_000;
+
+// CONTRACT
+/// Byte offsets of non-overlapping occurrences of `needle` in `haystack`,
+/// ignoring ASCII case, at most `limit`, and whether more were left out
+/// (F06-AC8). An empty needle matches nothing.
+#[must_use]
+pub fn find_all(haystack: &[u8], needle: &str, limit: usize) -> (Vec<usize>, bool) {
+    let needle = needle.as_bytes();
+    let mut found = Vec::new();
+    let Some(&first) = needle.first() else {
+        return (found, false);
+    };
+    let (lower, upper) = (first.to_ascii_lowercase(), first.to_ascii_uppercase());
+    let mut at = 0;
+    while let Some(i) = memchr::memchr2(lower, upper, &haystack[at..]) {
+        let start = at + i;
+        let candidate = haystack.get(start..start + needle.len());
+        if candidate.is_some_and(|c| c.eq_ignore_ascii_case(needle)) {
+            if found.len() == limit {
+                return (found, true);
+            }
+            found.push(start);
+            at = start + needle.len();
+        } else {
+            at = start + 1;
+        }
+    }
+    (found, false)
+}
+
+impl LineIndex {
+    // CONTRACT
+    /// The display line containing byte `offset`; offsets past the end
+    /// belong to the last line.
+    #[must_use]
+    pub fn line_at(&self, offset: usize) -> usize {
+        self.starts
+            .partition_point(|&start| start as usize <= offset)
+            .saturating_sub(1)
+    }
+}

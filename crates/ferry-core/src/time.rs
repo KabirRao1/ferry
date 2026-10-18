@@ -107,3 +107,44 @@ pub fn month_name(month: u8) -> &'static str {
         .copied()
         .unwrap_or("")
 }
+
+/// Howard Hinnant's `days_from_civil`: a proleptic Gregorian date to days
+/// since 1970-01-01. `month` is 1 to 12.
+pub(crate) fn days_from_civil(year: i64, month: u8, day: u8) -> i64 {
+    let (month, day) = (i64::from(month), i64::from(day));
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let yoe = year.rem_euclid(400);
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Three-letter English month names, for cookie dates.
+pub(crate) const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+// CONTRACT
+/// An HTTP date (RFC 9110 IMF-fixdate), for example
+/// `Sat, 17 Oct 2026 20:07:20 GMT`.
+#[must_use]
+pub fn http_date(unix_millis: i64) -> String {
+    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    let days = unix_millis.div_euclid(86_400_000);
+    let date = civil_from_days(days);
+    let secs = unix_millis.rem_euclid(86_400_000) / 1000;
+    // `rem_euclid(7)` is 0..=6 and `month` 1..=12.
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let weekday = DAYS[days.rem_euclid(7) as usize];
+    format!(
+        "{weekday}, {:02} {} {:04} {:02}:{:02}:{:02} GMT",
+        date.day,
+        MONTHS[usize::from(date.month) - 1],
+        date.year,
+        secs / 3600,
+        secs / 60 % 60,
+        secs % 60
+    )
+}

@@ -1,7 +1,10 @@
 //! Modal dialogs: discard changes (F07-AC2), Save (F09-AC5), Rename
-//! (F09-AC7, F08-AC8) and Delete.
+//! (F09-AC7, F08-AC8), Delete, Clear history (F10-AC5) and the cookie
+//! manager (F17-AC5).
 
-use ferry_app::{App, Dialog, Item, ItemKind, Message as AppMessage, Node, Target};
+use ferry_app::{
+    App, CookieManager, Dialog, Item, ItemKind, Message as AppMessage, Node, Target, format,
+};
 use iced::widget::text::Wrapping;
 use iced::widget::{
     Column, button, center, column, container, row, scrollable, space, text, text_input,
@@ -14,6 +17,10 @@ use crate::{Element, theme};
 
 /// Id of the dialog's name field, for focus.
 pub const NAME_INPUT: &str = "dialog-name";
+pub const CLEAR_HISTORY: &str = "Clear all history?";
+pub const MANAGE_COOKIES: &str = "Manage Cookies";
+pub const NO_DOMAINS: &str = "No cookies yet";
+pub const ADD_COOKIE: &str = "Add Cookie";
 
 fn app(message: AppMessage) -> Message {
     Message::App(message)
@@ -40,6 +47,8 @@ pub fn view(state: &App) -> Option<Element<'_, Message>> {
         ),
         Dialog::Rename { name, error, .. } => rename(name, error.as_deref()),
         Dialog::ConfirmDelete { target, name } => confirm_delete(target, name),
+        Dialog::ClearHistory => clear_history(),
+        Dialog::Cookies(manager) => cookies(state, manager),
     };
     Some(dialog)
 }
@@ -241,4 +250,198 @@ fn confirm_delete<'a>(target: &'a Target, name: &'a str) -> Element<'a, Message>
         .spacing(12),
         420.0,
     )
+}
+
+fn clear_history<'a>() -> Element<'a, Message> {
+    frame(
+        column![
+            text(CLEAR_HISTORY).size(16),
+            text("Every request in history and its response is removed.")
+                .size(TEXT)
+                .style(theme::muted),
+            buttons(
+                "Clear",
+                app(AppMessage::DialogConfirm),
+                app(AppMessage::DialogCancel),
+                true
+            ),
+        ]
+        .spacing(12),
+        420.0,
+    )
+}
+
+/// `Session`, or the expiry as an HTTP date (F17-AC4).
+#[must_use]
+pub fn expires_label(expires: Option<i64>) -> String {
+    expires.map_or_else(|| "Session".to_owned(), format::http_date)
+}
+
+/// The cookie manager: domains on the left, the selected domain's cookies
+/// on the right, each editable as `Set-Cookie` text (F17-AC5).
+fn cookies<'a>(state: &'a App, manager: &'a CookieManager) -> Element<'a, Message> {
+    let add_domain = row![
+        text_input("Type a domain name", &manager.new_domain)
+            .on_input(|s| app(AppMessage::CookieNewDomain(s)))
+            .on_submit(app(AppMessage::CookieAddDomain))
+            .size(TEXT)
+            .padding([6, 8])
+            .style(theme::input),
+        button(text("Add").size(TEXT))
+            .on_press(app(AppMessage::CookieAddDomain))
+            .padding([6, 14])
+            .style(theme::secondary),
+    ]
+    .spacing(8);
+    let domains = state.cookie_domains();
+    let domain_list: Element<'a, Message> = if domains.is_empty() {
+        container(text(NO_DOMAINS).size(TEXT).style(theme::muted))
+            .padding(10)
+            .into()
+    } else {
+        let rows = domains.into_iter().map(|domain| {
+            let selected = manager.selected.as_deref() == Some(domain.as_str());
+            row![
+                button(text(domain.clone()).size(TEXT).wrapping(Wrapping::None))
+                    .on_press(app(AppMessage::CookieDomain(domain.clone())))
+                    .padding([5, 8])
+                    .width(Fill)
+                    .style(theme::choice(selected)),
+                button(text("×").size(TEXT).style(theme::muted))
+                    .on_press(app(AppMessage::CookieDeleteDomain(domain)))
+                    .padding([2, 6])
+                    .style(theme::flat(false)),
+            ]
+            .align_y(Alignment::Center)
+            .into()
+        });
+        scrollable(Column::with_children(rows).spacing(1)).into()
+    };
+    let detail: Element<'a, Message> = match &manager.selected {
+        None => container(
+            text("Select a domain to see its cookies.")
+                .size(TEXT)
+                .style(theme::muted),
+        )
+        .padding(10)
+        .into(),
+        Some(domain) => domain_cookies(state, manager, domain),
+    };
+    frame(
+        column![
+            text(MANAGE_COOKIES).size(16),
+            add_domain,
+            row![
+                container(domain_list)
+                    .width(220)
+                    .height(320)
+                    .style(theme::raised),
+                container(detail).width(Fill).height(320),
+            ]
+            .spacing(12),
+            row![
+                space().width(Fill),
+                button(text("Close").size(TEXT))
+                    .on_press(app(AppMessage::DialogCancel))
+                    .padding([6, 14])
+                    .style(theme::secondary),
+            ],
+        ]
+        .spacing(12),
+        760.0,
+    )
+}
+
+fn domain_cookies<'a>(
+    state: &'a App,
+    manager: &'a CookieManager,
+    domain: &'a str,
+) -> Element<'a, Message> {
+    let mut list = column![].spacing(4);
+    for cookie in state.cookies().for_domain(domain) {
+        let key = (cookie.name.clone(), cookie.path.clone());
+        let summary = column![
+            text(format!("{}={}", cookie.name, cookie.value))
+                .size(TEXT)
+                .wrapping(Wrapping::None),
+            text(format!(
+                "Path {} · {}{}{}",
+                cookie.path,
+                expires_label(cookie.expires),
+                if cookie.secure { " · Secure" } else { "" },
+                if cookie.http_only { " · HttpOnly" } else { "" },
+            ))
+            .size(SMALL)
+            .style(theme::faint)
+            .wrapping(Wrapping::None),
+        ]
+        .spacing(2);
+        list = list.push(
+            container(
+                row![
+                    container(summary).width(Fill).clip(true),
+                    button(text("Edit").size(SMALL))
+                        .on_press(app(AppMessage::CookieEdit(Some(key.clone()))))
+                        .padding([3, 8])
+                        .style(theme::secondary),
+                    button(text("Delete").size(SMALL))
+                        .on_press(app(AppMessage::CookieDelete(key.0, key.1)))
+                        .padding([3, 8])
+                        .style(theme::secondary),
+                ]
+                .spacing(6)
+                .align_y(Alignment::Center),
+            )
+            .padding([6, 8])
+            .style(theme::raised),
+        );
+    }
+    let mut content = column![
+        row![
+            text(domain).size(TEXT),
+            space().width(Fill),
+            button(text(ADD_COOKIE).size(SMALL))
+                .on_press(app(AppMessage::CookieEdit(None)))
+                .padding([3, 8])
+                .style(theme::secondary),
+        ]
+        .align_y(Alignment::Center),
+        scrollable(list).height(Fill),
+    ]
+    .spacing(8);
+    if let Some(editor) = &manager.editor {
+        let mut field = column![
+            text(if editor.original.is_some() {
+                "Edit cookie"
+            } else {
+                "New cookie"
+            })
+            .size(SMALL)
+            .style(theme::muted),
+            text_input("name=value; Path=/", &editor.text)
+                .on_input(|s| app(AppMessage::CookieText(s)))
+                .on_submit(app(AppMessage::CookieSave))
+                .size(TEXT)
+                .padding([6, 8])
+                .style(theme::input),
+        ]
+        .spacing(4);
+        if let Some(error) = &editor.error {
+            field = field.push(text(error.as_str()).size(SMALL).style(theme::error));
+        }
+        field = field.push(row![
+            space().width(Fill),
+            button(text("Cancel").size(SMALL))
+                .on_press(app(AppMessage::CookieDomain(domain.to_owned())))
+                .padding([4, 10])
+                .style(theme::secondary),
+            space().width(6),
+            button(text("Save").size(SMALL))
+                .on_press(app(AppMessage::CookieSave))
+                .padding([4, 10])
+                .style(theme::primary),
+        ]);
+        content = content.push(container(field).padding(8).style(theme::raised));
+    }
+    content.into()
 }

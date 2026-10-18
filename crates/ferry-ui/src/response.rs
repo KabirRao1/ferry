@@ -1,12 +1,15 @@
 //! The response pane: Body, Cookies, Headers and Test Results tabs, with the
 //! status, time (and its breakdown) and size on the right (F06, F14-AC3).
 
-use ferry_app::{BodyFormat, Message as AppMessage, Phase, Received, ResponseTab, Tab, format};
+use ferry_app::{
+    BodyFormat, FILTER_TOO_LARGE, FilterState, Message as AppMessage, Phase, Received, ResponseTab,
+    Tab, format,
+};
 use iced::widget::text::{Shaping, Wrapping};
 use iced::widget::{
-    button, center, column, container, row, rule, scrollable, space, text, tooltip,
+    button, center, column, container, row, rule, scrollable, space, text, text_input, tooltip,
 };
-use iced::{Alignment, Fill, Font};
+use iced::{Alignment, Fill, FillPortion, Font};
 
 use crate::request::underline;
 use crate::screen::{SMALL, TEXT, coming};
@@ -23,6 +26,14 @@ pub const SENDING: &str = "Sending request…";
 pub const CANCELLED: &str = "Request cancelled";
 pub const EMPTY_BODY: &str = "Empty body";
 pub const FAILED_TITLE: &str = "Could not send request";
+pub const NO_COOKIES: &str = "No cookies were set by this response";
+pub const SAVE_AS_EXAMPLE: &str = "Save as Example";
+/// Why Save as Example is disabled (F32-AC1).
+pub const SAVE_FIRST: &str = "Save the request to a collection first";
+/// Id of the find bar's field, for focus (F06-AC8).
+pub const FIND_INPUT: &str = "find-input";
+/// Placeholder of the filter field (F22-AC4).
+pub const FILTER_PLACEHOLDER: &str = "Filter with JSONPath, e.g. $.items[*].name";
 
 fn app(m: AppMessage) -> Message {
     Message::App(m)
@@ -74,7 +85,7 @@ pub fn view(tab: &Tab) -> Element<'_, Message> {
             ),
         ]
         .into(),
-        Phase::Received(received) => self::received(received, tab.response_tab),
+        Phase::Received(received) => self::received(tab, received),
     };
     container(content)
         .width(Fill)
@@ -88,13 +99,14 @@ pub fn view(tab: &Tab) -> Element<'_, Message> {
 pub fn tab_label(received: &Received, which: ResponseTab) -> String {
     match which {
         ResponseTab::Body => "Body".into(),
-        ResponseTab::Cookies => "Cookies".into(),
+        ResponseTab::Cookies => format!("Cookies ({})", received.cookies.len()),
         ResponseTab::Headers => format!("Headers ({})", received.response.headers.len()),
         ResponseTab::TestResults => "Test Results".into(),
     }
 }
 
-fn received(received: &Received, selected: ResponseTab) -> Element<'_, Message> {
+fn received<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
+    let selected = tab.response_tab;
     let r = &received.response;
     let tabs = row(ResponseTab::ALL.into_iter().map(|which| {
         column![
@@ -132,12 +144,9 @@ fn received(received: &Received, selected: ResponseTab) -> Element<'_, Message> 
         .align_y(Alignment::Center)
         .padding([4, 16]);
     let content: Element<'_, Message> = match selected {
-        ResponseTab::Body => body(received),
+        ResponseTab::Body => body(tab, received),
         ResponseTab::Headers => headers(received),
-        ResponseTab::Cookies => coming(
-            "Cookies arrive in Phase 3",
-            "A cookie jar that keeps cookies between requests, with the cookies each response set.",
-        ),
+        ResponseTab::Cookies => cookies(received),
         ResponseTab::TestResults => coming(
             "Test results arrive in Phase 4",
             "Write tests in post-response scripts with pm.test and see which pass here.",
@@ -181,7 +190,7 @@ fn timing(r: &ferry_app::Response) -> Element<'_, Message> {
     rows.width(240).into()
 }
 
-fn body(received: &Received) -> Element<'_, Message> {
+fn body<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
     let formats = row(received.formats().into_iter().map(|f| {
         button(text(f.to_string()).size(SMALL))
             .on_press(app(AppMessage::BodyFormatSelected(f)))
@@ -190,13 +199,172 @@ fn body(received: &Received) -> Element<'_, Message> {
             .into()
     }))
     .spacing(2);
-    let content: Element<'_, Message> =
-        if received.response.body.is_empty() && received.format != BodyFormat::Hex {
-            center(text(EMPTY_BODY).size(TEXT).style(theme::muted)).into()
+    let mut toolbar = row![formats].spacing(10).align_y(Alignment::Center);
+    let pretty = received.format == BodyFormat::Pretty && received.pretty.is_some();
+    if pretty && received.filter_available() {
+        toolbar = toolbar.push(
+            text_input(FILTER_PLACEHOLDER, &received.filter.expression)
+                .on_input(|s| app(AppMessage::FilterChanged(s)))
+                .size(SMALL)
+                .padding([3, 8])
+                .width(300)
+                .style(theme::input),
+        );
+    } else if pretty {
+        toolbar = toolbar.push(text(FILTER_TOO_LARGE).size(SMALL).style(theme::faint));
+    }
+    toolbar = toolbar.push(space().width(Fill));
+    if received.searchable() {
+        toolbar = toolbar.push(tooltip(
+            button(text("Search").size(SMALL))
+                .on_press(app(AppMessage::FindOpen))
+                .padding([2, 10])
+                .style(theme::flat(received.find.is_some())),
+            container(text(FIND_SHORTCUT).size(SMALL))
+                .padding(6)
+                .style(theme::dialog),
+            tooltip::Position::Bottom,
+        ));
+    }
+    toolbar = toolbar.push(save_as_example(tab));
+    let mut parts = column![toolbar].spacing(6);
+    if let Some(find) = &received.find {
+        parts = parts.push(find_bar(find));
+    }
+    if let Some(note) = &received.note {
+        parts = parts.push(text(note.as_str()).size(SMALL).style(theme::muted));
+    }
+    if received.format == BodyFormat::Pretty {
+        match &received.filter.state {
+            FilterState::Invalid(error) => {
+                parts = parts.push(text(error.as_str()).size(SMALL).style(theme::error));
+            }
+            FilterState::Running => {
+                parts = parts.push(text("Filtering…").size(SMALL).style(theme::faint));
+            }
+            FilterState::Off | FilterState::Shown(_) => {}
+        }
+    }
+    let content: Element<'_, Message> = if received.response.body.is_empty()
+        && received.format != BodyFormat::Hex
+    {
+        center(text(EMPTY_BODY).size(TEXT).style(theme::muted)).into()
+    } else {
+        body_view::view(received.view(), received.find.as_ref()).map(|m| app(AppMessage::Body(m)))
+    };
+    parts.push(content).into()
+}
+
+/// The shortcut hint on the Search button.
+pub const FIND_SHORTCUT: &str = if cfg!(target_os = "macos") {
+    "Find in body (⌘+F)"
+} else {
+    "Find in body (Ctrl+F)"
+};
+
+/// `Save as Example`, disabled with a hint in an unlinked tab (F32-AC1).
+fn save_as_example(tab: &Tab) -> Element<'_, Message> {
+    let button = button(text(SAVE_AS_EXAMPLE).size(SMALL))
+        .padding([2, 10])
+        .style(theme::secondary);
+    if tab.link.is_some() {
+        button.on_press(app(AppMessage::SaveAsExample)).into()
+    } else {
+        tooltip(
+            button,
+            container(text(SAVE_FIRST).size(SMALL))
+                .padding(6)
+                .style(theme::dialog),
+            tooltip::Position::Bottom,
+        )
+        .into()
+    }
+}
+
+/// The find bar: field, `<i> of <n>`, previous, next and close (F06-AC8).
+fn find_bar(find: &ferry_app::Find) -> Element<'_, Message> {
+    let step = |label: &'static str, message: AppMessage| {
+        let b = button(text(label).size(SMALL))
+            .padding([2, 8])
+            .style(theme::flat(false));
+        if find.matches.is_empty() {
+            b
         } else {
-            body_view::view(received.view()).map(|m| app(AppMessage::Body(m)))
-        };
-    column![formats, content].spacing(6).into()
+            b.on_press(app(message))
+        }
+    };
+    row![
+        text_input("Find in body", &find.query)
+            .id(iced::widget::Id::new(FIND_INPUT))
+            .on_input(|s| app(AppMessage::FindQuery(s)))
+            .on_submit(Message::FindSubmit)
+            .size(SMALL)
+            .padding([3, 8])
+            .width(260)
+            .style(theme::input),
+        text(find.label()).size(SMALL).style(theme::muted).width(90),
+        step("↑", AppMessage::FindPrevious),
+        step("↓", AppMessage::FindNext),
+        button(text("×").size(TEXT))
+            .on_press(app(AppMessage::FindClose))
+            .padding([0, 8])
+            .style(theme::flat(false)),
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The cookies the final response set (F17-AC4).
+fn cookies(received: &Received) -> Element<'_, Message> {
+    if received.cookies.is_empty() {
+        return center(text(NO_COOKIES).size(TEXT).style(theme::muted)).into();
+    }
+    // Shares of the width, so the table always fits the pane.
+    const WIDTHS: [u16; 7] = [3, 4, 3, 2, 4, 2, 2];
+    let cell = |s: String, i: usize| mono_owned(s).width(FillPortion(WIDTHS[i]));
+    let head = |s: &'static str, i: usize| {
+        text(s)
+            .size(SMALL)
+            .style(theme::muted)
+            .width(FillPortion(WIDTHS[i]))
+    };
+    let header = row![
+        head("Name", 0),
+        head("Value", 1),
+        head("Domain", 2),
+        head("Path", 3),
+        head("Expires", 4),
+        head("HttpOnly", 5),
+        head("Secure", 6),
+    ]
+    .spacing(12);
+    let yes_no = |b: bool| if b { "true" } else { "false" }.to_owned();
+    let rows = received.cookies.iter().map(|c| {
+        row![
+            cell(c.name.clone(), 0),
+            cell(c.value.clone(), 1),
+            cell(c.domain.clone(), 2),
+            cell(c.path.clone(), 3),
+            cell(crate::dialogs::expires_label(c.expires), 4),
+            cell(yes_no(c.http_only), 5),
+            cell(yes_no(c.secure), 6),
+        ]
+        .spacing(12)
+        .padding([3, 0])
+        .into()
+    });
+    column![header, scrollable(column(rows).width(Fill)).height(Fill)]
+        .spacing(4)
+        .into()
+}
+
+fn mono_owned<'a>(content: String) -> iced::widget::Text<'a> {
+    text(content)
+        .font(Font::MONOSPACE)
+        .size(TEXT)
+        .shaping(Shaping::Basic)
+        .wrapping(Wrapping::WordOrGlyph)
 }
 
 fn headers(received: &Received) -> Element<'_, Message> {

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use ferry_core::auth::{ApiKeyLocation, AuthKind};
 use ferry_core::body::{BodyMode, FormField, RawLanguage};
+use ferry_core::cookies::Cookie;
 use ferry_core::draft::RequestDraft;
 use ferry_core::json::{self, JsonError};
 use ferry_core::kv::{self, KeyValue};
@@ -16,6 +17,7 @@ use ferry_http::CancellationToken;
 
 use crate::body_view::{self, BodyView};
 use crate::doc::{self, ContainerSection, Doc, VarEdit};
+use crate::find::{Filter, FilterState, Find};
 
 // CONTRACT
 /// Identifies a tab for its whole life, across reorders.
@@ -72,27 +74,53 @@ pub struct Received {
     pub pretty: Option<BodyView>,
     pub hex: BodyView,
     pub format: BodyFormat,
+    /// The cookies the final response set (F17-AC4).
+    pub cookies: Vec<Cookie>,
+    /// A remark shown above the body, such as a history truncation.
+    pub note: Option<String>,
+    /// The find bar, while open (F06-AC8).
+    pub find: Option<Find>,
+    /// The Pretty view's `JSONPath` filter (F22-AC4).
+    pub filter: Filter,
 }
 
 impl Received {
     // CONTRACT
-    /// The view for the selected format. Pretty falls back to Raw for
-    /// bodies that are not JSON.
+    /// The view for the selected format. Pretty shows the filter's results
+    /// when it has some, and falls back to Raw for bodies that are not JSON.
     #[must_use]
     pub fn view(&self) -> &BodyView {
         match self.format {
-            BodyFormat::Pretty => self.pretty.as_ref().unwrap_or(&self.raw),
+            BodyFormat::Pretty => match &self.filter.state {
+                FilterState::Shown(view) => view,
+                _ => self.pretty.as_ref().unwrap_or(&self.raw),
+            },
             BodyFormat::Raw => &self.raw,
             BodyFormat::Hex => &self.hex,
         }
     }
 
-    fn view_mut(&mut self) -> &mut BodyView {
+    pub(crate) fn view_mut(&mut self) -> &mut BodyView {
         match self.format {
-            BodyFormat::Pretty => self.pretty.as_mut().unwrap_or(&mut self.raw),
+            BodyFormat::Pretty => match &mut self.filter.state {
+                FilterState::Shown(view) => view,
+                _ => self.pretty.as_mut().unwrap_or(&mut self.raw),
+            },
             BodyFormat::Raw => &mut self.raw,
             BodyFormat::Hex => &mut self.hex,
         }
+    }
+
+    /// Every view, for messages that concern them all.
+    fn views_mut(&mut self) -> impl Iterator<Item = &mut BodyView> {
+        let filtered = match &mut self.filter.state {
+            FilterState::Shown(view) => Some(view),
+            _ => None,
+        };
+        [Some(&mut self.raw), Some(&mut self.hex)]
+            .into_iter()
+            .chain([self.pretty.as_mut(), filtered])
+            .flatten()
     }
 
     // CONTRACT
@@ -213,6 +241,8 @@ pub enum Edit {
     ApiLocation(ApiKeyLocation),
     FollowRedirects(bool),
     VerifyTls(bool),
+    /// `Send and store cookies` (F17-AC3).
+    SendCookies(bool),
     /// A row of an environment's or a collection's variables (F08-AC8,
     /// F09-AC11).
     Var(usize, VarEdit),
@@ -402,6 +432,7 @@ impl Tab {
             Edit::ApiLocation(v) => d.auth.location = v,
             Edit::FollowRedirects(v) => d.options.follow_redirects = v,
             Edit::VerifyTls(v) => d.options.verify_tls = v,
+            Edit::SendCookies(v) => d.options.cookies = v,
             // Edits for other kinds of tab.
             Edit::Var(..)
             | Edit::Description(_)
@@ -534,6 +565,28 @@ impl Tab {
     }
 
     // CONTRACT
+    /// Parse the cookies the response just received set, for the Cookies
+    /// tab (F17-AC4).
+    pub fn received_cookies(&mut self, now: i64) {
+        let Phase::Received(received) = &mut self.phase else {
+            return;
+        };
+        let response = &received.response;
+        let Ok(url) = url::Url::parse(&response.url) else {
+            return;
+        };
+        let host = url.host_str().unwrap_or_default();
+        received.cookies = response
+            .headers
+            .iter()
+            .filter(|h| h.name.eq_ignore_ascii_case("set-cookie"))
+            .filter_map(|h| {
+                ferry_core::cookies::parse_set_cookie(&h.value, host, url.path(), now).ok()
+            })
+            .collect();
+    }
+
+    // CONTRACT
     /// Cancel the send in flight, if any.
     pub fn cancel(&mut self) {
         if let Phase::Sending { cancel, .. } = &self.phase {
@@ -544,7 +597,12 @@ impl Tab {
 
     pub(crate) fn body_message(&mut self, message: body_view::Message) {
         if let Phase::Received(received) = &mut self.phase {
-            received.view_mut().update(message);
+            if let body_view::Message::Resized(_) = message {
+                // The viewport is shared by every format.
+                received.views_mut().for_each(|view| view.update(message));
+            } else {
+                received.view_mut().update(message);
+            }
         }
     }
 

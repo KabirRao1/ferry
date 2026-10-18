@@ -16,6 +16,8 @@ memchr = "2"
 mime_guess = { version = "2", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
+# JSONPath (RFC 9535) for the response filter (F22-AC4).
+serde_json_path = "0.7"
 thiserror.workspace = true
 toml.workspace = true
 url.workspace = true

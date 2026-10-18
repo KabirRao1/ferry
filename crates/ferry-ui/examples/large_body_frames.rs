@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.update(Message::ScrolledBy(3));
         }
         let t = Instant::now();
-        let mut ui = Simulator::with_size(Settings::default(), size, body_view::view(&state));
+        let mut ui = Simulator::with_size(Settings::default(), size, body_view::view(&state, None));
         build.push(t.elapsed().as_secs_f64() * 1e3);
         let t = Instant::now();
         let _ = ui.snapshot(&iced::Theme::Dark)?;

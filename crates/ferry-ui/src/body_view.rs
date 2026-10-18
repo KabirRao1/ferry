@@ -1,14 +1,18 @@
-//! Virtualized response body view (F06-AC9, F06-AC10).
+//! Virtualized response body view (F06-AC9, F06-AC10), with search
+//! highlights (F06-AC8).
 //!
 //! Only the lines that fit the viewport are turned into widgets, so render
 //! cost is independent of body size.
 
-use ferry_app::body_view::{BodyView, Message};
+use ferry_app::Find;
+use ferry_app::body_view::{BodyView, Mark, Message};
 use iced::widget::text::{LineHeight, Shaping, Wrapping};
-use iced::widget::{column, container, mouse_area, responsive, row, text, vertical_slider};
+use iced::widget::{
+    Row, column, container, mouse_area, responsive, row, sensor, text, vertical_slider,
+};
 use iced::{Fill, Font, Pixels, mouse};
 
-use crate::Element;
+use crate::{Element, theme};
 
 /// Height of one display line, in logical pixels.
 pub const LINE_HEIGHT: f32 = 18.0;
@@ -16,16 +20,39 @@ const TEXT_SIZE: f32 = 13.0;
 /// Display lines moved per wheel notch.
 const WHEEL_LINES: f32 = 3.0;
 
-/// Render `state` filling the available space.
-pub fn view(state: &BodyView) -> Element<'_, Message> {
-    responsive(move |size| {
+/// Render `state` filling the available space, highlighting the matches of
+/// `find` (F06-AC8). Reports the viewport's size in display lines.
+pub fn view<'a>(state: &'a BodyView, find: Option<&'a Find>) -> Element<'a, Message> {
+    let content = responsive(move |size| {
         let rows = rows_for_height(size.height);
         let gutter_digits = digits(state.line_count());
-        let lines = column(state.visible(rows).into_iter().map(|(n, line)| {
-            row![mono(format!("{:>gutter_digits$}", n + 1)), mono(line),]
-                .spacing(12)
-                .into()
-        }));
+        let lines = match find.filter(|f| !f.matches.is_empty()) {
+            Some(find) => column(
+                state
+                    .visible_marked(rows, &find.matches, find.query.len(), find.current())
+                    .into_iter()
+                    .map(|(n, pieces)| {
+                        let pieces = pieces.into_iter().map(|(piece, mark)| match mark {
+                            Mark::Plain => mono(piece).into(),
+                            Mark::Match => container(mono(piece)).style(theme::find_match).into(),
+                            Mark::Current => container(mono(piece).color(theme::BACKGROUND))
+                                .style(theme::find_current)
+                                .into(),
+                        });
+                        row![
+                            mono(format!("{:>gutter_digits$}", n + 1)),
+                            Row::with_children(pieces),
+                        ]
+                        .spacing(12)
+                        .into()
+                    }),
+            ),
+            None => column(state.visible(rows).into_iter().map(|(n, line)| {
+                row![mono(format!("{:>gutter_digits$}", n + 1)), mono(line),]
+                    .spacing(12)
+                    .into()
+            })),
+        };
         let body = mouse_area(container(lines).width(Fill).height(Fill).clip(true))
             .on_scroll(|delta| Message::ScrolledBy(lines_for_delta(delta)));
         if state.top() == 0 && state.line_count() <= rows {
@@ -40,8 +67,11 @@ pub fn view(state: &BodyView) -> Element<'_, Message> {
         })
         .width(10);
         row![body, scrollbar].into()
-    })
-    .into()
+    });
+    sensor(content)
+        .on_show(|size| Message::Resized(rows_for_height(size.height)))
+        .on_resize(|size| Message::Resized(rows_for_height(size.height)))
+        .into()
 }
 
 fn mono<'a>(content: impl text::IntoFragment<'a>) -> iced::widget::Text<'a> {

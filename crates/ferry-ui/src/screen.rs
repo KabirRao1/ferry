@@ -9,7 +9,7 @@ use iced::{Alignment, Fill, FillPortion, Shrink, mouse};
 
 use crate::editors::Editors;
 use crate::shell::Message;
-use crate::{Element, chrome, dialogs, docs, request, response, sidebar, theme};
+use crate::{Element, chrome, console, dialogs, docs, request, response, sidebar, theme};
 
 /// UI text size.
 pub const TEXT: f32 = 13.0;
@@ -30,13 +30,11 @@ pub fn view<'a>(
         body = body.push(vline());
     }
     body = body.push(workbench(app, editors, resizing));
-    let main = column![
-        chrome::header(app),
-        hline(),
-        body.height(Fill),
-        hline(),
-        chrome::footer(app, save_error),
-    ];
+    let mut main = column![chrome::header(app), hline(), body.height(Fill), hline()];
+    if app.console().open {
+        main = main.push(console::view(app)).push(hline());
+    }
+    let main = main.push(chrome::footer(app, save_error));
     let main = container(main)
         .width(Fill)
         .height(Fill)

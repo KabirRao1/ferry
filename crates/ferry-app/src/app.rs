@@ -8,17 +8,21 @@ use std::sync::Arc;
 
 use ferry_core::auth::{AuthDraft, AuthKind};
 use ferry_core::collection::{self, AuthSource};
+use ferry_core::cookies::Jar;
 use ferry_core::draft::RequestDraft;
+use ferry_core::history::{Entry, History};
 use ferry_core::json;
 use ferry_core::request::Request;
 use ferry_core::session::{Session, SessionTab};
 use ferry_core::text::looks_binary;
 use ferry_core::variables::{Resolver, ScopeKind, Vars};
 use ferry_core::workspace::{Op, Workspace};
-use ferry_http::{CancellationToken, Client, Outcome};
+use ferry_http::{CancellationToken, Client, Cookies, Outcome};
 
+use crate::activity::Pending;
 use crate::ambient::{Ambient, SystemAmbient};
 use crate::body_view::{self, BodyView};
+use crate::console::Console;
 use crate::doc::{Doc, EnvTarget};
 use crate::tab::{
     BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, Tab, TabId,
@@ -163,6 +167,68 @@ pub enum Message {
     DialogCancel,
     /// Hide the footer's error.
     DismissStatus,
+
+    // --- history (F10) ---
+    HistorySearch(String),
+    /// Open an entry in a new tab (F10-AC4).
+    OpenHistory(u64),
+    DeleteHistory(u64),
+    /// Asks `Clear all history?` first (F10-AC5).
+    ClearHistory,
+
+    // --- cookies (F17) ---
+    /// Open the cookie manager (F17-AC5).
+    OpenCookies,
+    CookieDomain(String),
+    /// Text of the manager's new-domain field.
+    CookieNewDomain(String),
+    CookieAddDomain,
+    /// Edit a cookie of the selected domain by name and path, or start a
+    /// new one with `None`.
+    CookieEdit(Option<(String, String)>),
+    CookieText(String),
+    CookieSave,
+    /// Delete a cookie of the selected domain by name and path.
+    CookieDelete(String, String),
+    CookieDeleteDomain(String),
+
+    // --- console (F18) ---
+    ToggleConsole,
+    ConsoleFilter(String),
+    ConsoleErrorsOnly(bool),
+    ConsoleClear,
+    /// Expand or collapse an entry.
+    ConsoleExpand(u64),
+
+    // --- examples (F32) ---
+    /// Save the active tab's response as an example of its request.
+    SaveAsExample,
+
+    // --- search and filter (F06-AC8, F22-AC4) ---
+    /// Ctrl/Cmd+F in the response pane, or its search button.
+    FindOpen,
+    /// Escape in the find bar.
+    FindClose,
+    FindQuery(String),
+    /// Enter or Down.
+    FindNext,
+    /// Shift+Enter or Up.
+    FindPrevious,
+    /// [`Effect::Find`] ran.
+    Found {
+        tab: TabId,
+        job: u64,
+        matches: Arc<Vec<usize>>,
+        capped: bool,
+    },
+    /// Typed into the Pretty view's filter field.
+    FilterChanged(String),
+    /// [`Effect::Filter`] ran: the results, or the error text.
+    Filtered {
+        tab: TabId,
+        job: u64,
+        result: Arc<Result<BodyView, String>>,
+    },
 }
 
 // CONTRACT
@@ -175,6 +241,8 @@ pub enum Effect {
         id: u64,
         request: Request,
         cancel: CancellationToken,
+        /// A snapshot of the jar (F17).
+        cookies: Cookies,
     },
     SaveSession(Session),
     /// Show a file dialog, then report [`Message::FilePicked`].
@@ -193,6 +261,39 @@ pub enum Effect {
     /// Switch to the workspace in this folder and report
     /// [`Message::WorkspaceLoaded`] (F09-AC14).
     SwitchWorkspace(PathBuf),
+    /// Save the history, write a new entry's body, and delete the bodies
+    /// of removed entries (F10-AC6).
+    History {
+        history: History,
+        body: Option<(u64, bytes::Bytes)>,
+        remove: Vec<u64>,
+    },
+    /// Read an entry's body and report [`Message::Finished`] for `tab` and
+    /// `id`, built with [`crate::history_response`] (F10-AC4).
+    LoadHistory {
+        tab: TabId,
+        id: u64,
+        entry: Box<Entry>,
+    },
+    SaveCookies(Jar),
+    /// Run every effect.
+    Batch(Vec<Effect>),
+    /// Search `body` for `query` with [`crate::run_find`] and report [`Message::Found`]
+    /// (F06-AC8).
+    Find {
+        tab: TabId,
+        job: u64,
+        body: bytes::Bytes,
+        query: String,
+    },
+    /// Apply the `JSONPath` `expression` to `body` with [`crate::run_find`] and report
+    /// [`Message::Filtered`] (F22-AC4).
+    Filter {
+        tab: TabId,
+        job: u64,
+        body: bytes::Bytes,
+        expression: String,
+    },
 }
 
 // CONTRACT
@@ -202,7 +303,7 @@ pub struct App {
     pub(crate) tabs: Vec<Tab>,
     pub(crate) active: usize,
     next_tab: u64,
-    last_send: u64,
+    pub(crate) last_send: u64,
     sidebar_open: bool,
     sidebar: SidebarSection,
     split: f32,
@@ -227,6 +328,15 @@ pub struct App {
     /// The last workspace error, shown in the footer.
     pub(crate) status: Option<String>,
     pub(crate) ambient: Box<dyn Ambient>,
+    pub(crate) history: History,
+    pub(crate) history_search: String,
+    pub(crate) cookies: Jar,
+    pub(crate) cookies_changed: bool,
+    pub(crate) console: Console,
+    /// Sends in flight, by send id, for history and the console.
+    pub(crate) pending: std::collections::HashMap<u64, Pending>,
+    /// The last search or filter job id.
+    pub(crate) next_job: u64,
 }
 
 impl Default for App {
@@ -268,6 +378,13 @@ impl App {
             tree_target: None,
             status: None,
             ambient: Box::new(SystemAmbient::default()),
+            history: History::default(),
+            history_search: String::new(),
+            cookies: Jar::default(),
+            cookies_changed: false,
+            console: Console::default(),
+            pending: std::collections::HashMap::new(),
+            next_job: 0,
         };
         for tab in session.tabs {
             let i = app.push_tab(tab.draft);
@@ -295,6 +412,22 @@ impl App {
     #[must_use]
     pub fn with_workspace_root(mut self, root: PathBuf) -> Self {
         self.workspace_root = Some(root);
+        self
+    }
+
+    // CONTRACT
+    /// Start with this history (F10-AC6).
+    #[must_use]
+    pub fn with_history(mut self, history: History) -> Self {
+        self.history = history;
+        self
+    }
+
+    // CONTRACT
+    /// Start with this cookie jar (F17-AC6).
+    #[must_use]
+    pub fn with_cookies(mut self, jar: Jar) -> Self {
+        self.cookies = jar;
         self
     }
 
@@ -458,7 +591,7 @@ impl App {
         collection::inherited_auth(&self.workspace.collections, link)
     }
 
-    fn index_of(&self, id: TabId) -> Option<usize> {
+    pub(crate) fn index_of(&self, id: TabId) -> Option<usize> {
         self.tabs.iter().position(|t| t.id == id)
     }
 
@@ -511,12 +644,7 @@ impl App {
                     self.session_changed = true;
                 }
             }
-            Message::Autosave => {
-                if self.session_changed {
-                    self.session_changed = false;
-                    return Some(Effect::SaveSession(self.session()));
-                }
-            }
+            Message::Autosave => return self.autosave(),
             Message::Edit(edit) => {
                 if self.tab_mut().edit(edit) {
                     self.session_changed = true;
@@ -526,7 +654,11 @@ impl App {
             Message::CancelPressed => self.tab_mut().cancel(),
             Message::RequestTabSelected(t) => self.tab_mut().request_tab = t,
             Message::ResponseTabSelected(t) => self.tab_mut().response_tab = t,
-            Message::BodyFormatSelected(f) => self.tab_mut().select_format(f),
+            Message::BodyFormatSelected(f) => {
+                self.tab_mut().select_format(f);
+                // The shown text changed.
+                return self.search_active();
+            }
             Message::Body(m) => self.tab_mut().body_message(m),
             Message::PickFile(target) => {
                 return Some(Effect::PickFile {
@@ -541,10 +673,41 @@ impl App {
                 }
             }
             Message::Finished { tab, id, result } => {
+                let effect = self.send_finished(id, &result);
                 if let Some(i) = self.index_of(tab) {
+                    let now = self.now_ms();
                     self.tabs[i].finished(id, result);
+                    self.tabs[i].received_cookies(now);
                 }
+                return effect;
             }
+            Message::HistorySearch(_)
+            | Message::OpenHistory(_)
+            | Message::DeleteHistory(_)
+            | Message::ClearHistory
+            | Message::OpenCookies
+            | Message::CookieDomain(_)
+            | Message::CookieNewDomain(_)
+            | Message::CookieAddDomain
+            | Message::CookieEdit(_)
+            | Message::CookieText(_)
+            | Message::CookieSave
+            | Message::CookieDelete(..)
+            | Message::CookieDeleteDomain(_)
+            | Message::ToggleConsole
+            | Message::ConsoleFilter(_)
+            | Message::ConsoleErrorsOnly(_)
+            | Message::ConsoleClear
+            | Message::ConsoleExpand(_)
+            | Message::SaveAsExample => return self.activity_message(message),
+            Message::FindOpen
+            | Message::FindClose
+            | Message::FindQuery(_)
+            | Message::FindNext
+            | Message::FindPrevious
+            | Message::Found { .. }
+            | Message::FilterChanged(_)
+            | Message::Filtered { .. } => return self.find_message(message),
             other => return self.workspace_message(other),
         }
         None
@@ -631,18 +794,25 @@ impl App {
                 return None;
             }
         };
-        let tab = &mut self.tabs[self.active];
         self.last_send += 1;
+        let id = self.last_send;
+        self.started(id, &request);
+        let cookies = Cookies {
+            jar: self.cookies.clone(),
+            now: self.now_ms(),
+        };
+        let tab = &mut self.tabs[self.active];
         let cancel = CancellationToken::new();
         tab.phase = Phase::Sending {
-            id: self.last_send,
+            id,
             cancel: cancel.clone(),
         };
         Some(Effect::Send {
             tab: tab.id,
-            id: self.last_send,
+            id,
             request,
             cancel,
+            cookies,
         })
     }
 }
@@ -683,11 +853,12 @@ pub async fn run(effect: Effect, client: Client) -> Option<Message> {
         id,
         request,
         cancel,
+        cookies,
     } = effect
     else {
         return None;
     };
-    let result = match client.send(&request, &cancel).await {
+    let result = match client.send_with(&request, Some(cookies), &cancel).await {
         Outcome::Completed(response) => match received(response) {
             Ok(received) => Finished::Received(Box::new(received)),
             Err(error) => Finished::Failed(error),
@@ -729,6 +900,10 @@ pub fn received(response: ferry_core::response::Response) -> Result<Received, St
         raw,
         pretty,
         format,
+        cookies: Vec::new(),
+        note: None,
+        find: None,
+        filter: crate::find::Filter::default(),
     })
 }
 

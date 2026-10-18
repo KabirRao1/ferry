@@ -210,3 +210,68 @@ proptest! {
         prop_assert_eq!(decoded, body);
     }
 }
+
+// --- F06-AC8 search ------------------------------------------------------------------
+
+#[test]
+fn f06_ac8_find_all_ignores_ascii_case() {
+    use ferry_core::text::find_all;
+    assert_eq!(find_all(b"Abc abc ABC", "abc", 10), (vec![0, 4, 8], false));
+    assert_eq!(
+        find_all(b"aaaa", "aa", 10),
+        (vec![0, 2], false),
+        "non-overlapping"
+    );
+    assert_eq!(find_all(b"abc", "", 10), (vec![], false));
+    assert_eq!(find_all(b"", "a", 10), (vec![], false));
+    assert_eq!(find_all(b"ab", "abc", 10), (vec![], false));
+    assert_eq!(find_all(b"xaxaxa", "a", 2), (vec![1, 3], true));
+    assert_eq!(find_all(b"xaxa", "a", 2), (vec![1, 3], false));
+    assert_eq!(
+        find_all("Ünïcode ü".as_bytes(), "ü", 10),
+        (vec![10], false),
+        "only ASCII folds"
+    );
+    assert_eq!(find_all(b"{\"Name\":1}", "\"name\"", 10), (vec![1], false));
+}
+
+#[test]
+fn f06_ac8_line_at_maps_offsets_to_display_lines() {
+    let body = b"ab\ncd\r\n\nlongline";
+    let index = LineIndex::build(body, NonZeroU32::new(4).unwrap()).unwrap();
+    // Lines: "ab", "cd", "", "long", "line".
+    let lines: Vec<usize> = [0, 1, 2, 3, 5, 6, 7, 8, 11, 12, 15, 99]
+        .iter()
+        .map(|&o| index.line_at(o))
+        .collect();
+    assert_eq!(lines, [0, 0, 0, 1, 1, 1, 2, 3, 3, 4, 4, 4]);
+}
+
+proptest! {
+    #[test]
+    fn f06_ac8_prop_matches_are_real_and_ordered(hay in "[aAbB\n]{0,40}", needle in "[ab]{1,3}") {
+        use ferry_core::text::find_all;
+        let (found, _) = find_all(hay.as_bytes(), &needle, 1000);
+        for pair in found.windows(2) {
+            prop_assert!(pair[1] >= pair[0] + needle.len());
+        }
+        for &o in &found {
+            prop_assert!(hay[o..o + needle.len()].eq_ignore_ascii_case(&needle));
+        }
+        // Nothing is missed: a left-to-right non-overlapping scan agrees.
+        let lower = hay.to_ascii_lowercase();
+        let expected: Vec<usize> = lower.match_indices(&needle).map(|(i, _)| i).collect();
+        prop_assert_eq!(found, expected);
+    }
+
+    #[test]
+    fn f06_ac8_prop_line_at_agrees_with_line(body in "[ab\n]{0,60}", wrap in 1u32..6) {
+        let index = LineIndex::build(body.as_bytes(), NonZeroU32::new(wrap).unwrap()).unwrap();
+        for n in 0..index.line_count() {
+            let range = index.line(body.as_bytes(), n).unwrap();
+            for o in range {
+                prop_assert_eq!(index.line_at(o), n);
+            }
+        }
+    }
+}
