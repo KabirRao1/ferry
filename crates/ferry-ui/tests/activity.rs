@@ -7,13 +7,14 @@
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
+use ferry_app::PREVIEW_UNAVAILABLE;
 use ferry_app::{
     App, Bytes, Client, Config, Edit, Finished, FixedAmbient, Header, Jar, Message as AppMessage,
     RequestTab, Response, ResponseTab, SetCookie, received, run_find,
 };
 use ferry_ui::console::{EMPTY, ERRORS_ONLY};
 use ferry_ui::dialogs::{ADD_COOKIE, CLEAR_HISTORY, MANAGE_COOKIES};
-use ferry_ui::response::{NO_COOKIES, SAVE_AS_EXAMPLE};
+use ferry_ui::response::{NO_COOKIES, OPEN_IN_BROWSER, SAVE_AS_EXAMPLE};
 use ferry_ui::screen::TEXT;
 use ferry_ui::shell::{Message, Shell};
 use ferry_ui::sidebar::{NO_HISTORY, NO_HISTORY_MATCH};
@@ -401,6 +402,77 @@ fn f22_ac4_large_bodies_explain_there_is_no_filter() {
     let mut app = fresh();
     receive(&mut app, response("application/json", big));
     assert!(has(&shell_for(app), ferry_app::FILTER_TOO_LARGE));
+}
+
+// --- F22 Preview -----------------------------------------------------------------------
+
+fn previewing(app: App) -> App {
+    let mut app = app;
+    receive(&mut app, response("text/html", "<h1>Hi</h1>"));
+    app.update(AppMessage::BodyFormatSelected(
+        ferry_app::BodyFormat::Preview,
+    ));
+    app
+}
+
+#[test]
+fn f22_ac1_preview_is_offered_with_open_in_browser() {
+    let mut app = fresh();
+    receive(&mut app, response("text/html", "<h1>Hi</h1>"));
+    let shell = shell_for(app);
+    assert!(has(&shell, "Preview"));
+    let got = app_messages(&shell, |ui| {
+        let _ = ui.click(OPEN_IN_BROWSER);
+    });
+    assert_eq!(got, vec!["OpenInBrowser".to_owned()]);
+    let got = app_messages(&shell, |ui| {
+        let _ = ui.click("Preview");
+    });
+    assert_eq!(got, vec!["BodyFormatSelected(Preview)".to_owned()]);
+}
+
+#[test]
+fn f22_ac1_the_web_view_area_is_left_empty() {
+    let shell = shell_for(previewing(fresh()));
+    assert!(
+        !has(&shell, "<h1>Hi</h1>"),
+        "the body text is not drawn under the web view"
+    );
+    assert!(!has(&shell, PREVIEW_UNAVAILABLE));
+    assert!(!has(&shell, "Search"), "no find bar for a preview");
+}
+
+#[test]
+fn f22_ac3_without_a_web_view_open_in_browser_is_offered() {
+    let shell = shell_for(previewing(fresh().without_preview()));
+    assert!(has(&shell, PREVIEW_UNAVAILABLE));
+    let mut app = previewing(fresh());
+    app.update(AppMessage::PreviewFailed("WebView2 is missing".into()));
+    let shell = shell_for(app);
+    assert!(has(&shell, PREVIEW_UNAVAILABLE));
+    assert!(has(&shell, "WebView2 is missing"));
+    let got = app_messages(&shell, |ui| {
+        let _ = ui.click(OPEN_IN_BROWSER);
+    });
+    assert_eq!(got, vec!["OpenInBrowser".to_owned()]);
+}
+
+#[test]
+fn f22_ac3_open_in_browser_writes_a_file_with_the_extension() {
+    // Only the file: launching the system's application is not tested.
+    let first = ferry_ui::preview::write_temp(b"%PDF-1.4", "pdf").unwrap();
+    let second = ferry_ui::preview::write_temp(b"<p>", "html").unwrap();
+    assert_ne!(first, second, "each call gets its own file");
+    let name = first.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(
+        name.starts_with("ferry-preview-") && name.ends_with(".pdf"),
+        "{name}"
+    );
+    assert_eq!(first.parent(), Some(std::env::temp_dir().as_path()));
+    assert_eq!(std::fs::read(&first).unwrap(), b"%PDF-1.4");
+    assert_eq!(std::fs::read(&second).unwrap(), b"<p>");
+    let _ = std::fs::remove_file(first);
+    let _ = std::fs::remove_file(second);
 }
 
 // --- F32-AC1 Save as Example -----------------------------------------------------------

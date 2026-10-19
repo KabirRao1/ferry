@@ -10,10 +10,10 @@
 - **Native UI.** No Electron; a web view is only created for HTML previews. Idles at about 24 MB of RAM and opens in under 100 ms.
 - **Handles huge responses.** A 50 MB body scrolls smoothly; only the visible lines are ever rendered.
 - **Offline and private.** No account, no sign-in, no telemetry.
-- **Plain-file collections** *(coming in Phase 3)*: requests saved as TOML files in a folder, so you can keep them in git and review them like code.
+- **Plain-file collections.** Requests, environments and globals are TOML files in a folder, so you can keep them in git and review them like code. Secrets stay in git-ignored `*.local.toml` files.
 
-> **Status: early development.** Ferry sends requests with params, headers, auth and bodies, in tabs that survive restarts.
-> Collections, environments, scripts and more protocols are on the [roadmap](#roadmap).
+> **Status: early development.** Ferry has collections, environments and variables, history, a cookie jar, a console, response search and previews, in tabs that survive restarts.
+> Scripts, the Collection Runner, imports and more protocols are on the [roadmap](#roadmap).
 
 ## Quick start
 
@@ -62,12 +62,30 @@ The window is laid out like Postman: a sidebar on the left, request tabs across 
 
 Tables have **Bulk Edit** for pasting `key: value` lines. Open tabs, including unsent requests, are restored when you start Ferry again.
 
+### Collections, environments and variables
+
+Ferry keeps your work in a **workspace folder** (by default `workspace` in Ferry's data directory; click the workspace name at the top left to pick another folder). Press **Ctrl+S** to save a request into a collection. Collections, folders and requests appear in the sidebar, where you can rename, duplicate, delete and drag them; every change is a plain file you can commit.
+
+Write `{{name}}` anywhere in a request to use a variable. Values come from the environment picked in the top right, then the collection, then **Globals**. Mark a variable **Secret** to keep its value in a `*.local.toml` file next to the environment, which the workspace's `.gitignore` excludes. Dynamic variables such as `{{$guid}}`, `{{$timestamp}}` and `{{$randomInt}}` get a fresh value on every send.
+
+### After you send
+
+- **History** in the sidebar lists the last 100 requests with their responses; click one to open it again.
+- **Cookies** set by responses are kept and sent with later requests to the same site. The response's **Cookies** tab lists what it set; **Cookies** in the footer manages the jar. Turn the jar off for one request in its **Settings**.
+- **Console** in the footer logs every request exactly as sent, with its headers and body.
+- **Search** (Ctrl+F) finds text in the response body; **Enter** and **Shift+Enter** step through matches.
+- For JSON, type a **JSONPath** expression such as `$.items[*].name` above the body to see just those values.
+- **Preview** shows HTML, images, audio, video and PDFs (Windows and macOS); **Open in Browser** opens the body with your default application.
+- **Save as Example** keeps a response with its saved request.
+
 | Shortcut | Action |
 |---|---|
 | Ctrl+Enter | Send |
 | Ctrl+T / Ctrl+W | New tab / close tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Ctrl+B | Show or hide the sidebar |
+| Ctrl+S | Save the request |
+| Ctrl+F | Search the response body |
 
 On macOS, use ⌘ instead of Ctrl (Ctrl+Tab stays Ctrl).
 
@@ -80,8 +98,8 @@ Ferry is heading for Postman's layout and every Postman feature that runs on you
 | 0 | Foundations: CI, test harness, performance budgets | ✅ done |
 | 1 | Send a request, see status, headers and body | ✅ done |
 | 2 | Postman-style workbench, query params, headers, bodies, auth, tabs, redirect/TLS options, timing breakdown | ✅ done |
-| 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | next |
-| 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI | planned |
+| 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | ✅ done |
+| 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI, Visualize | next |
 | 5 | Import/export (Postman, cURL, OpenAPI, HAR), code snippets, OAuth and other auth, proxy and certificates, vault | planned |
 | 6 | GraphQL, WebSocket, Socket.IO, server-sent events, gRPC, MQTT | planned |
 | 7 | Local mock server, docs generation, find and replace, settings, keyboard, releases | planned |

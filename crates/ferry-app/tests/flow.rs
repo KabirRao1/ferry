@@ -259,7 +259,11 @@ fn f06_ac10_body_messages_without_a_response_are_ignored() {
 fn f06_ac6_json_defaults_to_pretty_and_raw_is_available() {
     let r = received(response(200, "OK", "application/json", br#"{"a":[1,2]}"#)).unwrap();
     assert_eq!(r.format, BodyFormat::Pretty);
-    assert_eq!(r.formats(), BodyFormat::ALL);
+    assert_eq!(
+        r.formats(),
+        [BodyFormat::Pretty, BodyFormat::Raw, BodyFormat::Hex],
+        "no Preview for JSON"
+    );
     let lines: Vec<String> = r
         .view()
         .visible(10)
@@ -901,7 +905,7 @@ fn f06_ac6_only_bodies_that_look_like_json_are_pretty_printed() {
     let r = received(response(200, "OK", "text/plain", br#"{"a":1}"#)).unwrap();
     assert_eq!(r.format, BodyFormat::Pretty);
     let labels: Vec<String> = BodyFormat::ALL.iter().map(ToString::to_string).collect();
-    assert_eq!(labels, ["Pretty", "Raw", "Hex"]);
+    assert_eq!(labels, ["Pretty", "Raw", "Hex", "Preview"]);
 }
 
 #[test]

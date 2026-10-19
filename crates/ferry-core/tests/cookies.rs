@@ -55,9 +55,10 @@ fn f17_ac1_attributes() {
     // A Path that does not start with / falls back to the default.
     let c = parse_set_cookie("a=1; Path=relative", "h.test", "/d/x", NOW).unwrap();
     assert_eq!(c.path, "/d");
-    // An empty Domain is ignored.
-    let c = parse_set_cookie("a=1; Domain=", "h.test", "/", NOW).unwrap();
+    // An empty Domain or SameSite is ignored.
+    let c = parse_set_cookie("a=1; Domain=; SameSite=", "h.test", "/", NOW).unwrap();
     assert!(c.host_only);
+    assert_eq!(c.same_site, None);
 }
 
 #[test]
@@ -209,6 +210,8 @@ fn f17_ac1_cookie_dates() {
         "tomorrow",
         "32 Oct 2026 00:00:00",
         "21 Oct 2026 24:00:00",
+        "21 Oct 2026 07:60:00",
+        "21 Oct 2026 07:28:60",
         "21 Oct 1600 00:00:00",
         "21 Foo 2026 00:00:00",
         "21 Oct 2026",

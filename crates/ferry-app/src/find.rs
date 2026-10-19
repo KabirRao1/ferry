@@ -99,7 +99,7 @@ impl Received {
     /// Hex (F06-AC8).
     #[must_use]
     pub fn searchable(&self) -> bool {
-        self.view().is_text()
+        self.format != BodyFormat::Preview && self.view().is_text()
     }
 }
 

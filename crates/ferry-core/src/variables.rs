@@ -13,6 +13,9 @@ use crate::time;
 
 /// How many variables deep a value may refer to others (F08-AC4).
 pub const MAX_DEPTH: usize = 10;
+/// The most resolving may add to a text. References that repeat other
+/// references grow exponentially with depth; this stops them (FND-017).
+pub const MAX_GROWTH: usize = 10 * 1024 * 1024;
 
 // CONTRACT
 /// One variable as defined in a scope.
@@ -185,6 +188,9 @@ pub enum VarError {
     Cycle(String),
     /// Nesting past [`MAX_DEPTH`], at this name (F08-AC4).
     TooDeep(String),
+    /// Expanding this name would grow the text past [`MAX_GROWTH`]
+    /// (F08-AC4, FND-017).
+    TooLarge(String),
 }
 
 impl fmt::Display for VarError {
@@ -204,6 +210,11 @@ impl fmt::Display for VarError {
                 f,
                 "Variables are nested more than {MAX_DEPTH} levels deep at {{{{{name}}}}}"
             ),
+            Self::TooLarge(name) => write!(
+                f,
+                "Variables expand to more than {} MB at {{{{{name}}}}}",
+                MAX_GROWTH / (1024 * 1024)
+            ),
         }
     }
 }
@@ -218,6 +229,10 @@ pub struct Resolver<'a, 'v> {
     ambient: &'a mut dyn Ambient,
     unresolved: Vec<String>,
     fatal: Option<VarError>,
+    /// The longest the text being resolved may become.
+    limit: usize,
+    /// The text grew past `limit`: stop expanding.
+    stopped: bool,
 }
 
 impl<'a, 'v> Resolver<'a, 'v> {
@@ -229,6 +244,8 @@ impl<'a, 'v> Resolver<'a, 'v> {
             ambient,
             unresolved: Vec::new(),
             fatal: None,
+            limit: 0,
+            stopped: false,
         }
     }
 
@@ -236,12 +253,15 @@ impl<'a, 'v> Resolver<'a, 'v> {
     /// `text` with every reference replaced. Unresolved references stay
     /// verbatim and are recorded for [`Resolver::finish`].
     pub fn resolve(&mut self, text: &str) -> String {
+        self.limit = text.len().saturating_add(MAX_GROWTH);
+        self.stopped = false;
         let mut stack = Vec::new();
         self.expand(text, &mut stack)
     }
 
     /// `text` with references replaced; `stack` holds the variables being
-    /// expanded, outermost first.
+    /// expanded, outermost first. Returns early, with what it has, once the
+    /// text has grown too much.
     fn expand(&mut self, text: &str, stack: &mut Vec<String>) -> String {
         let refs = references(text);
         if refs.is_empty() {
@@ -261,9 +281,17 @@ impl<'a, 'v> Resolver<'a, 'v> {
                     self.fail(VarError::TooDeep(r.name));
                     out.push_str(reference);
                 } else {
-                    stack.push(r.name);
+                    stack.push(r.name.clone());
                     let value = self.expand(&variable.value, stack);
                     stack.pop();
+                    if self.stopped {
+                        return out;
+                    }
+                    if out.len() + value.len() + (text.len() - last) > self.limit {
+                        self.fail(VarError::TooLarge(r.name));
+                        self.stopped = true;
+                        return out;
+                    }
                     out.push_str(&value);
                 }
             } else if let Some(value) = dynamic(&r.name, self.ambient) {

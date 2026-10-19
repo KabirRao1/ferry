@@ -68,24 +68,33 @@ pub fn run(ci: bool, record: bool) -> Result {
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut file: File = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
 
+    // `ferry` on its own, as the release workflow builds it: with the
+    // examples, dev-dependencies (`iced_test`) would add features, such as
+    // an embedded font, that the shipped binary lacks (FND-018).
     util::run(
         "build release",
+        util::cargo().args(["build", "--release", "-p", "ferry-ui", "--bin", "ferry"]),
+    )?;
+    let release = util::root().join("target").join("release");
+    let suffix = std::env::consts::EXE_SUFFIX;
+    let ferry = release.join(format!("ferry{suffix}"));
+    // Measured before the examples build, which never relinks `ferry`.
+    let binary_size_bytes = std::fs::metadata(&ferry)
+        .map_err(|e| format!("{}: {e}", ferry.display()))?
+        .len();
+    util::run(
+        "build release examples",
         util::cargo().args([
             "build",
             "--release",
             "-p",
             "ferry-ui",
-            "--bin",
-            "ferry",
             "--example",
             "empty_window",
             "--example",
             "scroll_probe",
         ]),
     )?;
-    let release = util::root().join("target").join("release");
-    let suffix = std::env::consts::EXE_SUFFIX;
-    let ferry = release.join(format!("ferry{suffix}"));
     let empty = release
         .join("examples")
         .join(format!("empty_window{suffix}"));
@@ -94,9 +103,7 @@ pub fn run(ci: bool, record: bool) -> Result {
         .join(format!("scroll_probe{suffix}"));
 
     let mut m = Measured {
-        binary_size_bytes: std::fs::metadata(&ferry)
-            .map_err(|e| format!("{}: {e}", ferry.display()))?
-            .len(),
+        binary_size_bytes,
         ..Measured::default()
     };
     (m.empty_cold_start_ms, m.empty_rss_mb) = probe_startup(&empty)?;

@@ -48,10 +48,17 @@ pub enum BodyFormat {
     Pretty,
     Raw,
     Hex,
+    /// Rendered by a web view (F22-AC1).
+    Preview,
 }
 
 impl BodyFormat {
-    pub const ALL: [BodyFormat; 3] = [BodyFormat::Pretty, BodyFormat::Raw, BodyFormat::Hex];
+    pub const ALL: [BodyFormat; 4] = [
+        BodyFormat::Pretty,
+        BodyFormat::Raw,
+        BodyFormat::Hex,
+        BodyFormat::Preview,
+    ];
 }
 
 impl std::fmt::Display for BodyFormat {
@@ -60,6 +67,7 @@ impl std::fmt::Display for BodyFormat {
             Self::Pretty => "Pretty",
             Self::Raw => "Raw",
             Self::Hex => "Hex",
+            Self::Preview => "Preview",
         })
     }
 }
@@ -82,6 +90,8 @@ pub struct Received {
     pub find: Option<Find>,
     /// The Pretty view's `JSONPath` filter (F22-AC4).
     pub filter: Filter,
+    /// The send that produced it; set when it reaches its tab.
+    pub send: u64,
 }
 
 impl Received {
@@ -97,6 +107,8 @@ impl Received {
             },
             BodyFormat::Raw => &self.raw,
             BodyFormat::Hex => &self.hex,
+            // The web view shows the body; the text views stay as they are.
+            BodyFormat::Preview => &self.raw,
         }
     }
 
@@ -108,6 +120,7 @@ impl Received {
             },
             BodyFormat::Raw => &mut self.raw,
             BodyFormat::Hex => &mut self.hex,
+            BodyFormat::Preview => &mut self.raw,
         }
     }
 
@@ -130,6 +143,7 @@ impl Received {
         BodyFormat::ALL
             .into_iter()
             .filter(|f| *f != BodyFormat::Pretty || self.pretty.is_some())
+            .filter(|f| *f != BodyFormat::Preview || self.preview_type().is_some())
             .collect()
     }
 }
@@ -558,7 +572,10 @@ impl Tab {
         }
         let result = Arc::try_unwrap(result).unwrap_or_else(|shared| (*shared).clone());
         self.phase = match result {
-            crate::Finished::Received(received) => Phase::Received(received),
+            crate::Finished::Received(mut received) => {
+                received.send = id;
+                Phase::Received(received)
+            }
             crate::Finished::Failed(text) => Phase::Failed(text),
             crate::Finished::Cancelled => Phase::Cancelled,
         };

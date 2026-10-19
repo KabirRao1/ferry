@@ -64,7 +64,7 @@ fn workbench<'a>(app: &'a App, editors: &'a Editors, resizing: bool) -> Element<
         let request = container(request::view(app, app.tab(), editors))
             .height(FillPortion(top.max(1)))
             .width(Fill);
-        let response = container(response::view(app.tab()))
+        let response = container(response::view(app, app.tab()))
             .height(FillPortion(1000u16.saturating_sub(top).max(1)))
             .width(Fill);
         let divider = mouse_area(container(space().height(4).width(Fill)).style(if resizing {

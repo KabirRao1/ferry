@@ -125,7 +125,14 @@ fn startup() -> Started {
     let history = HistoryStore::new(RealFs, &dir);
     let cookies = CookieStore::new(RealFs, &dir);
     let now = now_millis();
-    let app = App::restore(session)
+    let app = App::restore(session);
+    // Linux has no embedded web view (ADR-0041).
+    let app = if cfg!(any(windows, target_os = "macos")) {
+        app
+    } else {
+        app.without_preview()
+    };
+    let app = app
         .with_workspace(workspace.load())
         .with_workspace_root(root.clone())
         .with_history(restored("history", history.load()))

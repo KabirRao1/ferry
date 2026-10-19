@@ -34,3 +34,24 @@ path = "fuzz_targets/params_sync.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "set_cookie"
+path = "fuzz_targets/set_cookie.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "variables"
+path = "fuzz_targets/variables.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "workspace_formats"
+path = "fuzz_targets/workspace_formats.rs"
+test = false
+doc = false
+bench = false

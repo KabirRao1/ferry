@@ -229,6 +229,13 @@ pub enum Message {
         job: u64,
         result: Arc<Result<BodyView, String>>,
     },
+
+    // --- preview (F22) ---
+    /// The web view could not be created; Preview falls back to Open in
+    /// Browser from now on (F22-AC3).
+    PreviewFailed(String),
+    /// Open the active tab's response body with the system's application.
+    OpenInBrowser,
 }
 
 // CONTRACT
@@ -294,6 +301,12 @@ pub enum Effect {
         body: bytes::Bytes,
         expression: String,
     },
+    /// Write `body` to a temporary file named with `extension` and open it
+    /// with the system's default application (F22-AC3).
+    OpenInBrowser {
+        body: bytes::Bytes,
+        extension: &'static str,
+    },
 }
 
 // CONTRACT
@@ -337,6 +350,9 @@ pub struct App {
     pub(crate) pending: std::collections::HashMap<u64, Pending>,
     /// The last search or filter job id.
     pub(crate) next_job: u64,
+    /// An embedded web view can show previews (F22-AC3).
+    pub(crate) preview_available: bool,
+    pub(crate) preview_error: Option<String>,
 }
 
 impl Default for App {
@@ -385,6 +401,8 @@ impl App {
             console: Console::default(),
             pending: std::collections::HashMap::new(),
             next_job: 0,
+            preview_available: true,
+            preview_error: None,
         };
         for tab in session.tabs {
             let i = app.push_tab(tab.draft);
@@ -708,6 +726,9 @@ impl App {
             | Message::Found { .. }
             | Message::FilterChanged(_)
             | Message::Filtered { .. } => return self.find_message(message),
+            Message::PreviewFailed(_) | Message::OpenInBrowser => {
+                return self.preview_message(message);
+            }
             other => return self.workspace_message(other),
         }
         None
@@ -904,6 +925,7 @@ pub fn received(response: ferry_core::response::Response) -> Result<Received, St
         note: None,
         find: None,
         filter: crate::find::Filter::default(),
+        send: 0,
     })
 }
 

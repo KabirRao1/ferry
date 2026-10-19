@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 2e7aa4b803596914e9f82e0fb834f81689924372314efb3b858ad676a643ed38 # shrinks to text = "", values = ["", "", ""]
+cc b5945695f78c7ea5e743e6efbfdafda28a4d94ac2b4f6faf191fc9481e82023e # shrinks to text = "{{a}}  {{{", values = ["", "", ""]

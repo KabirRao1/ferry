@@ -238,6 +238,25 @@ fn f09_ac2_params_get_their_original_text_from_the_url() {
     )
     .unwrap();
     assert_eq!(file.request.params[0].original.as_deref(), Some("q=a%20b"));
+    // A param that disagrees with the URL keeps no original text.
+    for params in [
+        "key = \"q\"
+value = \"other\"",
+        "key = \"other\"
+value = \"a%20b\"",
+    ] {
+        let file = parse_request(
+            &format!(
+                "url = \"https://a.test/?q=a%20b\"
+[[params]]
+{params}
+"
+            ),
+            "x",
+        )
+        .unwrap();
+        assert_eq!(file.request.params[0].original, None, "{params}");
+    }
 }
 
 #[test]
@@ -252,6 +271,18 @@ fn f09_ac12_invalid_request_files_report_a_reason() {
         let error = parse_request(text, "x").unwrap_err();
         assert!(!error.to_string().is_empty(), "{text}");
     }
+    // Syntax errors name their line, counting from 1.
+    let error = parse_request("name = ", "x").unwrap_err().to_string();
+    assert!(error.starts_with("line 1: "), "{error}");
+    let error = parse_request(
+        "name = \"a\"
+
+url = ",
+        "x",
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.starts_with("line 3: "), "{error}");
 }
 
 #[test]

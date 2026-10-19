@@ -2,12 +2,13 @@
 //! status, time (and its breakdown) and size on the right (F06, F14-AC3).
 
 use ferry_app::{
-    BodyFormat, FILTER_TOO_LARGE, FilterState, Message as AppMessage, Phase, Received, ResponseTab,
-    Tab, format,
+    App, BodyFormat, FILTER_TOO_LARGE, FilterState, Message as AppMessage, PREVIEW_UNAVAILABLE,
+    Phase, Received, ResponseTab, Tab, format,
 };
 use iced::widget::text::{Shaping, Wrapping};
 use iced::widget::{
-    button, center, column, container, row, rule, scrollable, space, text, text_input, tooltip,
+    button, center, column, container, row, rule, scrollable, sensor, space, text, text_input,
+    tooltip,
 };
 use iced::{Alignment, Fill, FillPortion, Font};
 
@@ -41,7 +42,7 @@ fn app(m: AppMessage) -> Message {
 
 /// The response pane for `tab`.
 #[must_use]
-pub fn view(tab: &Tab) -> Element<'_, Message> {
+pub fn view<'a>(state: &'a App, tab: &'a Tab) -> Element<'a, Message> {
     let header_label = text("Response").size(TEXT).style(theme::muted);
     let content: Element<'_, Message> = match &tab.phase {
         Phase::Idle => column![
@@ -85,7 +86,7 @@ pub fn view(tab: &Tab) -> Element<'_, Message> {
             ),
         ]
         .into(),
-        Phase::Received(received) => self::received(tab, received),
+        Phase::Received(received) => self::received(state, tab, received),
     };
     container(content)
         .width(Fill)
@@ -105,7 +106,7 @@ pub fn tab_label(received: &Received, which: ResponseTab) -> String {
     }
 }
 
-fn received<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
+fn received<'a>(state: &'a App, tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
     let selected = tab.response_tab;
     let r = &received.response;
     let tabs = row(ResponseTab::ALL.into_iter().map(|which| {
@@ -144,7 +145,7 @@ fn received<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
         .align_y(Alignment::Center)
         .padding([4, 16]);
     let content: Element<'_, Message> = match selected {
-        ResponseTab::Body => body(tab, received),
+        ResponseTab::Body => body(state, tab, received),
         ResponseTab::Headers => headers(received),
         ResponseTab::Cookies => cookies(received),
         ResponseTab::TestResults => coming(
@@ -190,7 +191,7 @@ fn timing(r: &ferry_app::Response) -> Element<'_, Message> {
     rows.width(240).into()
 }
 
-fn body<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
+fn body<'a>(state: &'a App, tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
     let formats = row(received.formats().into_iter().map(|f| {
         button(text(f.to_string()).size(SMALL))
             .on_press(app(AppMessage::BodyFormatSelected(f)))
@@ -226,6 +227,14 @@ fn body<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
             tooltip::Position::Bottom,
         ));
     }
+    if received.preview_type().is_some() {
+        toolbar = toolbar.push(
+            button(text(OPEN_IN_BROWSER).size(SMALL))
+                .on_press(app(AppMessage::OpenInBrowser))
+                .padding([2, 10])
+                .style(theme::secondary),
+        );
+    }
     toolbar = toolbar.push(save_as_example(tab));
     let mut parts = column![toolbar].spacing(6);
     if let Some(find) = &received.find {
@@ -245,15 +254,48 @@ fn body<'a>(tab: &'a Tab, received: &'a Received) -> Element<'a, Message> {
             FilterState::Off | FilterState::Shown(_) => {}
         }
     }
-    let content: Element<'_, Message> = if received.response.body.is_empty()
-        && received.format != BodyFormat::Hex
-    {
+    let content: Element<'_, Message> = if received.format == BodyFormat::Preview {
+        preview(state)
+    } else if received.response.body.is_empty() && received.format != BodyFormat::Hex {
         center(text(EMPTY_BODY).size(TEXT).style(theme::muted)).into()
     } else {
         body_view::view(received.view(), received.find.as_ref()).map(|m| app(AppMessage::Body(m)))
     };
     parts.push(content).into()
 }
+
+/// The area the web view covers, or why there is none (F22-AC1, F22-AC3).
+fn preview(state: &App) -> Element<'_, Message> {
+    if state.preview_available() {
+        // Empty: the native web view is laid over it. It reports layout
+        // changes so the web view follows.
+        return sensor(
+            container(space())
+                .id(iced::widget::Id::new(crate::preview::PREVIEW_AREA))
+                .width(Fill)
+                .height(Fill),
+        )
+        .on_show(|_| Message::PreviewMoved)
+        .on_resize(|_| Message::PreviewMoved)
+        .into();
+    }
+    let mut lines = column![text(PREVIEW_UNAVAILABLE).size(14)]
+        .spacing(8)
+        .align_x(Alignment::Center);
+    if let Some(error) = state.preview_error() {
+        lines = lines.push(text(error).size(SMALL).style(theme::muted));
+    }
+    lines = lines.push(
+        button(text(OPEN_IN_BROWSER).size(TEXT))
+            .on_press(app(AppMessage::OpenInBrowser))
+            .padding([6, 14])
+            .style(theme::primary),
+    );
+    center(lines).into()
+}
+
+/// The button that opens the body with the system's application (F22-AC3).
+pub const OPEN_IN_BROWSER: &str = "Open in Browser";
 
 /// The shortcut hint on the Search button.
 pub const FIND_SHORTCUT: &str = if cfg!(target_os = "macos") {

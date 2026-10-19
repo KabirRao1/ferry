@@ -9,8 +9,8 @@ use ferry_core::draft::RequestDraft;
 use ferry_core::kv::KeyValue;
 use ferry_core::time::{self, Date};
 use ferry_core::variables::{
-    Ambient, MAX_DEPTH, Reference, Resolver, ScopeKind, VarError, Variable, Vars, dynamic,
-    is_dynamic, references, uuid_v4,
+    Ambient, MAX_DEPTH, MAX_GROWTH, Reference, Resolver, ScopeKind, VarError, Variable, Vars,
+    dynamic, is_dynamic, references, uuid_v4,
 };
 use proptest::prelude::*;
 
@@ -354,6 +354,85 @@ fn f08_ac4_indirect_cycle_names_the_repeated_variable() {
     ];
     let vars = Vars::new().with(ScopeKind::Global, &list);
     assert_eq!(resolve(&vars, "{{a}}").1, Err(VarError::Cycle("b".into())));
+}
+
+/// Ten levels of ten references each: `{{l9}}` would expand to 10^10
+/// copies of `x` (FND-017).
+fn laughs() -> Vec<Variable> {
+    let mut list = vec![Variable::new("l0", "xxxxxxxxxx")];
+    for level in 1..10 {
+        list.push(Variable::new(
+            format!("l{level}"),
+            format!("{{{{l{}}}}}", level - 1).repeat(10),
+        ));
+    }
+    list
+}
+
+#[test]
+fn f08_ac4_exponential_expansion_stops_at_10_mb() {
+    let list = laughs();
+    let vars = Vars::new().with(ScopeKind::Global, &list);
+    let started = std::time::Instant::now();
+    let (out, result) = resolve(&vars, "{{l9}}");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        out.len() <= MAX_GROWTH + 64,
+        "output stays bounded: {} bytes",
+        out.len()
+    );
+    let Err(VarError::TooLarge(name)) = &result else {
+        panic!("{result:?}");
+    };
+    assert!(name.starts_with('l'), "{name}");
+    assert_eq!(
+        VarError::TooLarge("l3".into()).to_string(),
+        "Variables expand to more than 10 MB at {{l3}}"
+    );
+}
+
+#[test]
+fn f08_ac4_resolving_stops_at_the_reference_that_grew_too_much() {
+    let mut list = laughs();
+    list.push(Variable::new("tail", "TAIL"));
+    let vars = Vars::new().with(ScopeKind::Global, &list);
+    let mut ambient = Fixed::new();
+    let mut r = Resolver::new(&vars, &mut ambient);
+    // Nothing after the overflow is expanded, at any level.
+    let out = r.resolve("head {{l9}} {{tail}}");
+    assert_eq!(out, "head ");
+    // The next text, such as the next header, starts afresh.
+    assert_eq!(r.resolve("{{l0}} {{tail}}"), "xxxxxxxxxx TAIL");
+    assert!(matches!(r.finish(), Err(VarError::TooLarge(_))));
+}
+
+#[test]
+fn f08_ac4_growth_is_measured_against_the_text() {
+    // A large text with a small variable is fine.
+    let list = [Variable::new("v", "value")];
+    let vars = Vars::new().with(ScopeKind::Global, &list);
+    let big = "a".repeat(MAX_GROWTH + 1000) + "{{v}}";
+    let (out, result) = resolve(&vars, &big);
+    assert_eq!(result, Ok(()));
+    assert!(out.ends_with("avalue"));
+    // Exactly 10 MB of growth is allowed; one byte more is not.
+    let exact = [Variable::new("v", "x".repeat(MAX_GROWTH + 5))];
+    let vars = Vars::new().with(ScopeKind::Global, &exact);
+    assert_eq!(
+        resolve(&vars, "{{v}}").1,
+        Ok(()),
+        "growth of exactly MAX_GROWTH"
+    );
+    let over = [Variable::new("v", "x".repeat(MAX_GROWTH + 6))];
+    let vars = Vars::new().with(ScopeKind::Global, &over);
+    assert_eq!(
+        resolve(&vars, "{{v}}").1,
+        Err(VarError::TooLarge("v".into()))
+    );
 }
 
 #[test]

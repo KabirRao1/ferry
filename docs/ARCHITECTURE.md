@@ -23,11 +23,11 @@ Ferry is a Cargo workspace of five library and binary crates plus `xtask` toolin
 
 | Crate | Owns | Rules |
 |---|---|---|
-| `ferry-core` | Domain types: `RequestDraft` (what the user edits) and `build()` into a sendable `Request`; params/URL sync, headers, bodies, auth, JSON validation and pretty-printing, `Response`, error messages, the body line index and hex view, `Session` | No I/O. Pure functions. Clippy pedantic. |
-| `ferry-http` | Sending requests (headers, bodies, files, multipart), per-request redirect and TLS options, timing breakdown, cancellation, error classification | Tested against local servers only. DNS goes through an injectable `Resolver`. |
-| `ferry-store` | Atomic writes and the saved session; collections arrive in Phase 3 | Filesystem behind the `Fs` trait so error cases are testable. |
-| `ferry-app` | The workbench: `App` (tabs, layout), `Tab` (draft, response, editing state), `Message`, `update()`, `Effect`, `run()` | No rendering. Every user flow is testable headless. |
-| `ferry-ui` | iced views (`chrome`, `request`, `response`, `body_view`), the `Shell` that runs effects, and the binary | Views are functions of state plus iced widget state in `editors` (ADR-0031). No business logic. |
+| `ferry-core` | Domain types: `RequestDraft` (what the user edits) and `build()` into a sendable `Request`; params/URL sync, headers, bodies, auth, JSON validation, pretty-printing and the `JSONPath` filter, `Response`, error messages, the body line index, hex view and search; `variables` (resolution, dynamic variables), `collection`, `environment`, `workspace` (the tree and the file `Op`s that change it), `history`, `cookies` (an RFC 6265 jar), `Session` | No I/O. Pure functions; time and randomness are passed in. Clippy pedantic. |
+| `ferry-http` | Sending requests (headers, bodies, files, multipart), per-request redirect, TLS and cookie options, the cookie jar on every redirect hop, timing breakdown, cancellation, error classification | Tested against local servers only. DNS goes through an injectable `Resolver`. |
+| `ferry-store` | Atomic writes; the session; the workspace folder (load, apply `Op`s, watch for outside changes); history and its bodies; the cookie jar | Filesystem behind the `Fs` trait (`MemFs` in tests) so error cases are testable. Unreadable files are moved to `.bak`. |
+| `ferry-app` | The workbench: `App` (tabs, layout, workspace, history, cookies, console), `Tab` (draft or document, response, editing state), `Message`, `update()`, `Effect`, `run()`; search and filter jobs; what to preview | No rendering, no clock or randomness of its own (`Ambient`). Every user flow is testable headless. |
+| `ferry-ui` | iced views (`chrome`, `sidebar`, `request`, `response`, `body_view`, `docs`, `dialogs`, `console`), the `Shell` that runs effects, the Preview web view, and the binary | Views are functions of state plus iced widget state in `editors` (ADR-0031). No business logic. |
 | `xtask` | Gate, budgets, coverage, mutation and architecture checks | |
 
 `cargo xtask arch` fails the build if any crate depends on one it shouldn't.
@@ -64,7 +64,20 @@ Key points:
 - **`update()` never does I/O.** It returns an `Effect` describing the work. That keeps every state transition a plain function call in tests.
 - **Every send has an id.** Results for a cancelled or superseded send are ignored.
 - **Cancellation** uses a `CancellationToken` stored in `Phase::Sending`. Cancel fires it, and the in-flight `send` returns immediately, dropping the connection. Closing a tab cancels its send.
-- **Other effects** are file dialogs (`Effect::PickFile`) and session saves (`Effect::SaveSession`, from an autosave tick every 2 s when something changed, plus a synchronous save on window close).
+- **Other effects** are file and folder dialogs, workspace changes (`Effect::Workspace`), history and cookie saves, searches and filters, Open in Browser, and session saves (`Effect::SaveSession`, from an autosave tick every 2 s when something changed, plus a synchronous save of the session and the cookie jar on window close). `Effect::Batch` runs several.
+- **Before a send**, `update()` fills in inherited auth and resolves `{{variables}}` (environment, then collection, then globals), and hands `run()` a snapshot of the cookie jar. The response brings back the cookies set on every hop, and `update()` stores them in the app's jar, records history and completes the console entry.
+
+## The workspace
+
+Collections, environments and globals are plain TOML files in a workspace folder that a team can keep in git (ADR-0037). `ferry-app` decides every change as a list of `Op`s (create, write, rename, copy, remove); `ferry-store` applies them and loads the folder again, and the app reconciles open tabs with the new tree. A file watcher reloads the folder when something else changes it. Secret variable values live in `*.local.toml` files that the workspace's `.gitignore` excludes (ADR-0040).
+
+## Searching and filtering
+
+Search in the response body and the `JSONPath` filter run as effects on a worker thread. Each request carries a job id, so a late answer for an older query or expression is dropped. Matches are byte offsets; the viewer splits only the visible lines around them.
+
+## Preview
+
+Preview shows HTML, image, audio, video and PDF bodies in the system web view (WebView2 on Windows, WKWebView on macOS), as a native child window laid over the body area (ADR-0041). `App::preview()` says what should be shown; after every update the `Shell` creates, replaces or destroys the web view to match, and moves it when the body area's bounds change. The body is served from memory through a custom protocol; scripts, navigation away, new windows and downloads are refused, and there is no IPC handler. Linux, or a web view that fails to start, offers Open in Browser instead.
 
 ## Large responses
 
@@ -81,8 +94,9 @@ The UI renders on the CPU with tiny-skia by default. Compared with GPU rendering
 | Unit and property | `crates/*/tests` | nextest, proptest |
 | Error-message snapshots | `ferry-core/tests/snapshots` | insta |
 | HTTP integration | `ferry-http/tests` | wiremock and raw local sockets |
-| App flows | `ferry-app/tests/flow.rs` | message sequences, including real local servers |
+| App flows | `ferry-app/tests` | message sequences, including real local servers; workspaces in `MemFs` |
 | Headless UI and pixel snapshots | `ferry-ui/tests` | iced_test |
 | Fuzzing | `fuzz/` | cargo-fuzz |
-| Mutation | core, app, store | cargo-mutants |
+| Mutation | core, app, store | cargo-mutants (nightly in 8 shards) |
+| Web view | `ferry-ui/examples/preview_probe.rs` | a real window, checked by eye |
 | Performance | `cargo xtask budgets` | real windows, `budgets.toml` |

@@ -9,6 +9,7 @@ pub mod console;
 pub mod dialogs;
 pub mod docs;
 pub mod editors;
+pub mod preview;
 pub mod probe;
 pub mod request;
 pub mod response;

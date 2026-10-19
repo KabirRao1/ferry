@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Workspace folder: collections, folders, requests, environments and globals saved as plain TOML files you can keep in git, with outside changes picked up live and `Open Workspace…` to switch folders.
+- Collections sidebar: create, rename, duplicate, delete and drag to reorder or move; collection and folder settings (description, auth, variables); search across saved requests.
+- Variables: `{{name}}` in the URL, params, headers, body and auth, from the selected environment, the collection and globals, with nesting, dynamic variables such as `{{$guid}}` and `{{$timestamp}}`, and a strip showing where each one comes from. Secret values stay in `*.local.toml` files that git ignores.
+- Auth inherited from the collection or folder.
+- Tabs remember the saved request they came from; Ctrl+S saves.
+- History: the last 100 sends with their responses, grouped by day, searchable, one click to reopen.
+- Cookie jar: cookies kept between requests (including redirects) as RFC 6265 says, a Cookies tab on each response, a cookie manager, and a per-request setting to turn them off.
+- Console: every request as sent, with its headers and body, and how it ended; filter, errors only, expandable entries.
+- Search in the response body (Ctrl+F), with highlights, `<i> of <n>` and Enter / Shift+Enter to step.
+- JSONPath filter (RFC 9535) on the Pretty view of JSON responses up to 10 MB.
+- Preview of HTML, image, audio, video and PDF responses in an embedded web view on Windows and macOS (scripts off, no navigation away), and Open in Browser everywhere.
+- Saved examples: save a response as an example of its request, and edit or rename examples from the sidebar.
 - Postman-style workbench: header, sidebar (Collections, Environments, History), tab strip, request builder, response pane and footer, with a resizable request/response split.
 - Tabs: open, close (with a confirmation for unsaved changes), drag to reorder, dirty dot, and restore on restart.
 - Query params table kept in sync with the URL, with descriptions and enable/disable per row.
@@ -30,3 +42,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Cargo workspace with six crates and enforced dependency direction.
 - Merge gate: fmt, clippy, tests, coverage floors, cargo-deny, performance budgets, architecture check and mutation testing.
 - CI on Linux, macOS and Windows, plus nightly fuzzing and full mutation runs.
+- The binary-size budget measures `ferry` as it is released, without features that only the tests use.

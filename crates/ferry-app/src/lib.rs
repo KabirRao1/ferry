@@ -10,6 +10,7 @@ pub mod body_view;
 pub mod console;
 mod doc;
 mod find;
+mod preview;
 mod tab;
 mod workspace;
 
@@ -49,6 +50,7 @@ pub use ferry_store::{
     WorkspaceStore, data_dir, watch,
 };
 pub use find::{FILTER_TOO_LARGE, Filter, FilterState, Find, NO_RESULTS, run as run_find};
+pub use preview::{PREVIEW_UNAVAILABLE, PreviewTarget, extension, previewable};
 pub use tab::{
     BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, RowEdit, Tab, TabId,
     Table,

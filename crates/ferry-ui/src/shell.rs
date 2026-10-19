@@ -52,6 +52,8 @@ pub enum Message {
     FindSubmit,
     /// The keyboard modifiers changed.
     Modifiers(keyboard::Modifiers),
+    /// The Preview area moved or changed size (F22-AC1).
+    PreviewMoved,
 }
 
 impl From<ferry_app::Message> for Message {
@@ -75,6 +77,7 @@ pub struct Shell {
     history: Option<Arc<HistoryStore<RealFs>>>,
     cookies: Option<Arc<CookieStore<RealFs>>>,
     modifiers: keyboard::Modifiers,
+    preview: crate::preview::Preview,
 }
 
 impl Shell {
@@ -93,6 +96,7 @@ impl Shell {
             history: None,
             cookies: None,
             modifiers: keyboard::Modifiers::default(),
+            preview: crate::preview::Preview::default(),
         }
     }
 
@@ -157,6 +161,7 @@ impl Shell {
                 self.modifiers = modifiers;
                 Task::none()
             }
+            Message::PreviewMoved => self.preview.place(),
             Message::RawAction(action) => {
                 let id = self.app.tab().id;
                 match self.editors.get_mut(id) {
@@ -229,7 +234,9 @@ impl Shell {
             }
         };
         self.editors.sync(&self.app);
-        task
+        // Create, replace or destroy the web view to match (F22-AC1).
+        let preview = self.preview.sync(self.app.preview());
+        Task::batch([task, preview])
     }
 
     fn update_app(&mut self, message: ferry_app::Message) -> Task<Message> {
@@ -298,6 +305,9 @@ impl Shell {
                     },
                 )
                 .and_then(Task::done)
+            }
+            Effect::OpenInBrowser { body, extension } => {
+                blocking(move || crate::preview::open_in_browser(&body, extension).err())
             }
             Effect::SaveCookies(jar) => match &self.cookies {
                 Some(store) => {
