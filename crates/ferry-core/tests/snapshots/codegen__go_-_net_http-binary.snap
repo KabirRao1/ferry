@@ -1,0 +1,49 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+package main
+
+import (
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+func main() {
+	url := "https://api.test/cache"
+	payload, err := os.Open("data.bin")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer payload.Close()
+
+	client := &http.Client{}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	req, err := http.NewRequest("PURGE", url, payload)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/octet-stream")
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(body))
+}

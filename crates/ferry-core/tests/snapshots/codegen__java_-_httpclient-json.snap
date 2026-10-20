@@ -1,0 +1,25 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://api.test/users?tag=a%20b"))
+            .header("X-Note", "it's \"quoted\" $HOME #{x} \\ ok")
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer t0k")
+            .method("POST", HttpRequest.BodyPublishers.ofString("{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}"))
+            .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.body());
+    }
+}

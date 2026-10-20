@@ -1,0 +1,9 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+curl 'https://api.test/upload' \
+  --request POST \
+  --location \
+  --form-string 'title=Holiday' \
+  --form 'photo=@/home/ada/pics/beach.jpg'

@@ -1,0 +1,18 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+const headers = new Headers();
+headers.append("X-Note", "it's \"quoted\" $HOME #{x} \\ ok");
+headers.append("Content-Type", "application/json");
+headers.append("Authorization", "Bearer t0k");
+
+const body = "{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}";
+
+const response = await fetch("https://api.test/users?tag=a%20b", {
+  method: "POST",
+  headers,
+  body,
+  redirect: "follow",
+});
+console.log(await response.text());

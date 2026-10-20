@@ -1,0 +1,9 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+curl 'https://api.test/cache' \
+  --request PURGE \
+  --insecure \
+  --header 'Content-Type: application/octet-stream' \
+  --data-binary '@data.bin'

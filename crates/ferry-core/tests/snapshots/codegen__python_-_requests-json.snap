@@ -1,0 +1,17 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import requests
+
+url = "https://api.test/users?tag=a%20b"
+headers = {
+    "X-Note": "it's \"quoted\" $HOME #{x} \\ ok",
+    "Content-Type": "application/json",
+    "Authorization": "Bearer t0k",
+}
+data = "{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}"
+
+response = requests.request("POST", url, headers=headers, data=data.encode("utf-8"))
+
+print(response.text)

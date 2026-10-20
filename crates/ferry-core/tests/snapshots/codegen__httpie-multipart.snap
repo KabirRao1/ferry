@@ -1,0 +1,7 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+http --follow --multipart POST 'https://api.test/upload' \
+  'title=Holiday' \
+  'photo@/home/ada/pics/beach.jpg'

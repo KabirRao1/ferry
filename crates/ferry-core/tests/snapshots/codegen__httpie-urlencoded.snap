@@ -1,0 +1,8 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+http --follow --form PUT 'https://api.test/form' \
+  'Content-Type:application/x-www-form-urlencoded' \
+  'q=a b&c' \
+  'n=1'

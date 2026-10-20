@@ -1,0 +1,27 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://api.test/users?tag=a%20b',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_CUSTOMREQUEST => 'POST',
+    CURLOPT_POSTFIELDS => '{
+  "name": "Ada \\"L\\"",
+  "tab": "	"
+}',
+    CURLOPT_HTTPHEADER => [
+        'X-Note: it\'s "quoted" $HOME #{x} \\ ok',
+        'Content-Type: application/json',
+        'Authorization: Bearer t0k',
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+echo $response;

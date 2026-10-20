@@ -1,0 +1,24 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+var request = URLRequest(url: URL(string: "https://api.test/users?tag=a%20b")!, timeoutInterval: Double.infinity)
+request.addValue("it's \"quoted\" $HOME #{x} \\ ok", forHTTPHeaderField: "X-Note")
+request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+request.addValue("Bearer t0k", forHTTPHeaderField: "Authorization")
+request.httpMethod = "POST"
+request.httpBody = "{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}".data(using: .utf8)
+
+let task = URLSession.shared.dataTask(with: request) { data, response, error in
+    guard let data = data else {
+        print(String(describing: error))
+        return
+    }
+    print(String(data: data, encoding: .utf8)!)
+}
+task.resume()

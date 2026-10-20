@@ -1,0 +1,20 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+require "uri"
+require "net/http"
+
+url = URI("https://api.test/users?tag=a%20b")
+http = Net::HTTP.new(url.host, url.port)
+http.use_ssl = url.scheme == "https"
+
+request = Net::HTTPGenericRequest.new("POST", true, true, url)
+request["X-Note"] = "it's \"quoted\" $HOME \#{x} \\ ok"
+request["Content-Type"] = "application/json"
+request["Authorization"] = "Bearer t0k"
+request.body = "{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}"
+
+response = http.request(request)
+puts response.read_body
+# Net::HTTP does not follow redirects; check response["location"].

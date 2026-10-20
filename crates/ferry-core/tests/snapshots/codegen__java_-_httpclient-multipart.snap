@@ -1,0 +1,31 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
+        var body = new java.io.ByteArrayOutputStream();
+        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nHoliday\r\n".getBytes());
+        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"beach.jpg\"\r\n\r\n".getBytes());
+        body.writeBytes(Files.readAllBytes(Path.of("/home/ada/pics/beach.jpg")));
+        body.writeBytes("\r\n".getBytes());
+        body.writeBytes("------FerryFormBoundary--\r\n".getBytes());
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://api.test/upload"))
+            .header("Content-Type", "multipart/form-data; boundary=----FerryFormBoundary")
+            .method("POST", HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))
+            .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.body());
+    }
+}

@@ -1,0 +1,13 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+var handler = new HttpClientHandler();
+var client = new HttpClient(handler);
+var request = new HttpRequestMessage(new HttpMethod("POST"), "https://api.test/users?tag=a%20b");
+request.Headers.TryAddWithoutValidation("X-Note", "it's \"quoted\" $HOME #{x} \\ ok");
+request.Headers.TryAddWithoutValidation("Authorization", "Bearer t0k");
+request.Content = new StringContent("{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}");
+request.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/json");
+var response = await client.SendAsync(request);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

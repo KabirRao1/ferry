@@ -1,0 +1,21 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::builder()
+        .build()?;
+
+    let request = client
+        .request(reqwest::Method::from_bytes("PUT".as_bytes())?, "https://api.test/form")
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .form(&[
+            ("q", "a b&c"),
+            ("n", "1"),
+        ]);
+
+    let response = request.send().await?;
+    println!("{}", response.text().await?);
+    Ok(())
+}

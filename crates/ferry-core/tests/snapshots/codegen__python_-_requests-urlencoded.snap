@@ -1,0 +1,18 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import requests
+
+url = "https://api.test/form"
+headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+}
+data = [
+    ("q", "a b&c"),
+    ("n", "1"),
+]
+
+response = requests.request("PUT", url, headers=headers, data=data)
+
+print(response.text)

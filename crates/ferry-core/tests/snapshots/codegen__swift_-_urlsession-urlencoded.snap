@@ -1,0 +1,22 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+var request = URLRequest(url: URL(string: "https://api.test/form")!, timeoutInterval: Double.infinity)
+request.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+request.httpMethod = "PUT"
+request.httpBody = "q=a+b%26c&n=1".data(using: .utf8)
+
+let task = URLSession.shared.dataTask(with: request) { data, response, error in
+    guard let data = data else {
+        print(String(describing: error))
+        return
+    }
+    print(String(data: data, encoding: .utf8)!)
+}
+task.resume()

@@ -1,0 +1,13 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+var handler = new HttpClientHandler();
+var client = new HttpClient(handler);
+var request = new HttpRequestMessage(new HttpMethod("POST"), "https://api.test/upload");
+var form = new MultipartFormDataContent();
+form.Add(new StringContent("Holiday"), "title");
+form.Add(new ByteArrayContent(File.ReadAllBytes("/home/ada/pics/beach.jpg")), "photo", "beach.jpg");
+request.Content = form;
+var response = await client.SendAsync(request);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

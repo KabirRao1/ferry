@@ -1,0 +1,17 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+require "uri"
+require "net/http"
+
+url = URI("https://api.test/upload")
+http = Net::HTTP.new(url.host, url.port)
+http.use_ssl = url.scheme == "https"
+
+request = Net::HTTPGenericRequest.new("POST", true, true, url)
+request.set_form([["title", "Holiday"], ["photo", File.open("/home/ada/pics/beach.jpg")]], "multipart/form-data")
+
+response = http.request(request)
+puts response.read_body
+# Net::HTTP does not follow redirects; check response["location"].

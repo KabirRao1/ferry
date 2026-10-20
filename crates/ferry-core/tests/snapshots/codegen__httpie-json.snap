@@ -1,0 +1,11 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+http --follow --raw '{
+  "name": "Ada \"L\"",
+  "tab": "	"
+}' POST 'https://api.test/users?tag=a%20b' \
+  'X-Note:it'\''s "quoted" $HOME #{x} \ ok' \
+  'Content-Type:application/json' \
+  'Authorization:Bearer t0k'

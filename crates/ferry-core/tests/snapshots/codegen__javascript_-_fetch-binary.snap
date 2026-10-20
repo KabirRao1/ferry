@@ -1,0 +1,17 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+const headers = new Headers();
+headers.append("Content-Type", "application/octet-stream");
+
+const body = fileInput.files[0]; // data.bin
+
+const response = await fetch("https://api.test/cache", {
+  method: "PURGE",
+  headers,
+  body,
+  redirect: "manual",
+});
+console.log(await response.text());
+// fetch cannot turn off certificate verification.

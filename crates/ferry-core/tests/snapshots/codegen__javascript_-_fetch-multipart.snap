@@ -1,0 +1,17 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+const headers = new Headers();
+
+const body = new FormData();
+body.append("title", "Holiday");
+body.append("photo", fileInput.files[0], "beach.jpg"); // /home/ada/pics/beach.jpg
+
+const response = await fetch("https://api.test/upload", {
+  method: "POST",
+  headers,
+  body,
+  redirect: "follow",
+});
+console.log(await response.text());

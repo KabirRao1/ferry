@@ -1,0 +1,20 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
+    let request = client
+        .request(reqwest::Method::from_bytes("PURGE".as_bytes())?, "https://api.test/cache")
+        .header("Content-Type", "application/octet-stream")
+        .body(std::fs::read("data.bin")?);
+
+    let response = request.send().await?;
+    println!("{}", response.text().await?);
+    Ok(())
+}

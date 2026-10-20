@@ -1,0 +1,20 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::builder()
+        .build()?;
+
+    let request = client
+        .request(reqwest::Method::from_bytes("POST".as_bytes())?, "https://api.test/users?tag=a%20b")
+        .header("X-Note", "it's \"quoted\" $HOME #{x} \\ ok")
+        .header("Content-Type", "application/json")
+        .header("Authorization", "Bearer t0k")
+        .body("{\n  \"name\": \"Ada \\\"L\\\"\",\n  \"tab\": \"\t\"\n}");
+
+    let response = request.send().await?;
+    println!("{}", response.text().await?);
+    Ok(())
+}

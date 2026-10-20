@@ -1,0 +1,25 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::builder()
+        .build()?;
+
+    let request = client
+        .request(reqwest::Method::from_bytes("POST".as_bytes())?, "https://api.test/upload")
+        .multipart(
+            reqwest::multipart::Form::new()
+                .text("title", "Holiday")
+                .part(
+                    "photo",
+                    reqwest::multipart::Part::bytes(std::fs::read("/home/ada/pics/beach.jpg")?)
+                        .file_name("beach.jpg"),
+                )
+        );
+
+    let response = request.send().await?;
+    println!("{}", response.text().await?);
+    Ok(())
+}

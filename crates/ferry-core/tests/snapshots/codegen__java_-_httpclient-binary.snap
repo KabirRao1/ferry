@@ -1,0 +1,26 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+        // HttpClient needs an SSLContext that trusts all certificates to skip verification.
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://api.test/cache"))
+            .header("Content-Type", "application/octet-stream")
+            .method("PURGE", HttpRequest.BodyPublishers.ofFile(Path.of("data.bin")))
+            .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.body());
+    }
+}

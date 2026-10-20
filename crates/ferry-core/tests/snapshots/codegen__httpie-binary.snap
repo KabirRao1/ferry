@@ -1,0 +1,7 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+http --verify=no PURGE 'https://api.test/cache' \
+  'Content-Type:application/octet-stream' \
+  < 'data.bin'

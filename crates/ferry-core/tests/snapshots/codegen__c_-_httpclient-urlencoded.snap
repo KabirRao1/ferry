@@ -1,0 +1,16 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+var handler = new HttpClientHandler();
+var client = new HttpClient(handler);
+var request = new HttpRequestMessage(new HttpMethod("PUT"), "https://api.test/form");
+var fields = new List<KeyValuePair<string, string>>
+{
+    new("q", "a b&c"),
+    new("n", "1"),
+};
+request.Content = new FormUrlEncodedContent(fields);
+request.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/x-www-form-urlencoded");
+var response = await client.SendAsync(request);
+Console.WriteLine(await response.Content.ReadAsStringAsync());

@@ -1,0 +1,17 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import requests
+
+url = "https://api.test/upload"
+headers = {
+}
+files = [
+    ("title", (None, "Holiday")),
+    ("photo", ("beach.jpg", open("/home/ada/pics/beach.jpg", "rb"))),
+]
+
+response = requests.request("POST", url, headers=headers, files=files)
+
+print(response.text)

@@ -1,0 +1,15 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import requests
+
+url = "https://api.test/cache"
+headers = {
+    "Content-Type": "application/octet-stream",
+}
+data = open("data.bin", "rb")
+
+response = requests.request("PURGE", url, headers=headers, data=data, allow_redirects=False, verify=False)
+
+print(response.text)

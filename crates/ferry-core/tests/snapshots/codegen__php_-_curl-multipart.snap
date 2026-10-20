@@ -1,0 +1,22 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://api.test/upload',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_CUSTOMREQUEST => 'POST',
+    CURLOPT_POSTFIELDS => [
+        'title' => 'Holiday',
+        'photo' => new CURLFile('/home/ada/pics/beach.jpg'),
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+echo $response;

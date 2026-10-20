@@ -1,0 +1,22 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://api.test/form',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_CUSTOMREQUEST => 'PUT',
+    CURLOPT_POSTFIELDS => 'q=a+b%26c&n=1',
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/x-www-form-urlencoded',
+    ],
+]);
+
+$response = curl_exec($curl);
+curl_close($curl);
+echo $response;

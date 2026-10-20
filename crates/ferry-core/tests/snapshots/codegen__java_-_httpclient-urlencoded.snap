@@ -1,0 +1,23 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://api.test/form"))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .method("PUT", HttpRequest.BodyPublishers.ofString("q=a+b%26c&n=1"))
+            .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        System.out.println(response.body());
+    }
+}

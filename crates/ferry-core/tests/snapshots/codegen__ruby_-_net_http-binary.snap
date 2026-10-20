@@ -1,0 +1,19 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+require "uri"
+require "net/http"
+require "openssl"
+
+url = URI("https://api.test/cache")
+http = Net::HTTP.new(url.host, url.port)
+http.use_ssl = url.scheme == "https"
+http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+
+request = Net::HTTPGenericRequest.new("PURGE", true, true, url)
+request["Content-Type"] = "application/octet-stream"
+request.body = File.binread("data.bin")
+
+response = http.request(request)
+puts response.read_body

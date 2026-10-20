@@ -1,0 +1,10 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+curl 'https://api.test/form' \
+  --request PUT \
+  --location \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'q=a b&c' \
+  --data-urlencode 'n=1'

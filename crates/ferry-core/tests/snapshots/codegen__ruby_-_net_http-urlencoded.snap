@@ -1,0 +1,18 @@
+---
+source: crates/ferry-core/tests/codegen.rs
+expression: lang.generate(&s)
+---
+require "uri"
+require "net/http"
+
+url = URI("https://api.test/form")
+http = Net::HTTP.new(url.host, url.port)
+http.use_ssl = url.scheme == "https"
+
+request = Net::HTTPGenericRequest.new("PUT", true, true, url)
+request["Content-Type"] = "application/x-www-form-urlencoded"
+request.set_form([["q", "a b&c"], ["n", "1"]], "application/x-www-form-urlencoded")
+
+response = http.request(request)
+puts response.read_body
+# Net::HTTP does not follow redirects; check response["location"].
