@@ -184,6 +184,26 @@ The Windows release binary grew from 8.95 MB to 12.73 MB (+42%), past the 10% re
 **Decision.** `deny.toml` checks the four release targets from `release.yml`. `option-ext` is allowed MPL-2.0 as a named exception; MPL-2.0 as a whole stays off the allow list, so any new MPL-2.0 crate is a decision of its own. The unused `CDLA-Permissive-2.0` allowance is removed.
 **Consequences.** MPL-2.0 is file-level copyleft: Ferry uses `option-ext` unmodified, and its source stays available on crates.io, so Ferry's own code stays Apache-2.0. A release target added to `release.yml` must be added to `deny.toml` too.
 
+## ADR-0044: QuickJS through rquickjs for scripts (2026-10-19)
+**Context.** F15 needs a JavaScript engine for Postman-style scripts. Candidates: QuickJS (`rquickjs`, C), Boa (pure Rust) and V8 (`deno_core`/`rusty_v8`).
+**Decision.** QuickJS through `rquickjs`, in a new crate `ferry-script` that depends only on `ferry-core`. Each script runs in a fresh runtime with a 64 MB memory limit and an interrupt handler for the 5 s time limit; there is no module loader, file system or process access. `pm.sendRequest` and `console` reach the app through a `Host` trait that `ferry-app` implements with `ferry-http`, so the script crate never touches the network itself. `pm.expect` and `pm.response.to` are a JavaScript prelude in the crate.
+**Consequences.** QuickJS is small (a release spike binary with it was 1.15 MB in all, built on Windows without bindgen; the memory limit and the interrupt handler both stopped runaway scripts there), so ADR-0042's guard will need a re-baseline; starts in well under a millisecond, supports ES2023 and has the memory and interrupt hooks the sandbox needs. V8 would add tens of MB, and Boa is slower and less complete. QuickJS is C, so a parser bug is a memory-safety risk; scripts come from the user's own workspace, which already decides what is sent where, and the fuzz target `script` runs arbitrary source through the engine with the limits on.
+
+## ADR-0045: Script variable changes are saved to local files (2026-10-19)
+**Context.** Postman scripts change variables with `pm.environment.set` and friends; Postman keeps these as "current values" that are not synced. Ferry's environments and collections are files that teams commit (F09).
+**Decision.** Script changes to environments, globals and collection variables are saved to the scope's `.local.toml` file, which git ignores (F08-AC10), never to the shared file; collections get a `collection.local.toml` with the same rules. `unset` removes the local value. `pm.variables` is never saved. `ferry-cli` saves nothing.
+**Consequences.** Running scripts never produces a git diff, and a token a login script stores stays on the machine. A user who wants a script's value shared saves the environment from its tab, as for any other edit. This differs from Postman, where `unset` removes the variable outright.
+
+## ADR-0046: Visualize runs inline scripts with no network (2026-10-19)
+**Context.** Postman's Visualize renders a Handlebars template in a web view where the template's own scripts run, often to draw charts. Preview runs no scripts at all (ADR-0041).
+**Decision.** Ferry renders the Handlebars template with the `handlebars` crate and serves the HTML through the `ferry` protocol with `Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:`. Scripts in the page run, but the page cannot load, send or navigate to anything else; `pm.getData` is injected into the page. The same navigation, window and download blocks as Preview apply.
+**Consequences.** Tables, inline SVG and charts drawn by inline code work. Templates that load libraries from a CDN (common in Postman examples) do not, because that would let a template send response data anywhere; they show the template without the library. A library can be inlined into the template.
+
+## ADR-0047: The runner lives in ferry-app; ferry-cli is a thin binary (2026-10-19)
+**Context.** F16 needs the same run logic in the app and in a headless CLI, and the CLI must not pull in iced.
+**Decision.** The run loop (order, iterations, data rows, delay, `setNextRequest`, results) is in `ferry-app`, which has no UI dependency, and is driven by messages like every other flow, so it is tested without a window. Sending and scripts run as effects. `ferry-cli` is a new crate with one binary that loads a workspace with `ferry-store`, runs the loop to the end and prints results; it depends on `ferry-app` and `ferry-store` only.
+**Consequences.** The architecture table gains `ferry-script` (core) and `ferry-cli` (app, store). The CLI and the app cannot drift apart. The CLI is a separate download from the desktop app in releases.
+
 ---
 
 ## v2 candidates

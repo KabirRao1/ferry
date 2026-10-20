@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** 3 in progress (user approved 2026-10-17): every feature built; quality pass under way.
+**Phase:** 4 in progress (user asked 2026-10-19 to build the remaining phases). Phase 3 is complete once CI is green.
 
 ## Phase 3 progress (resume here)
 - Commits 18ef86d (F08, F09), a38a041 (F10, F17, F18, F06-AC8, F22-AC4, F32-AC1) and 8e2319a (Preview, quality pass) pushed 2026-10-19. CI run 39303834027 failed on three things, fixed in the next commit: the `set_cookie` fuzz target's assertion (FND-020), cargo-deny rejecting MPL-2.0 crates (ADR-0043), and ferry-app coverage at 89.2% (now 95.8% locally, with F32-AC3 example-tab tests that found FND-019).
