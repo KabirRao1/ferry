@@ -5,8 +5,10 @@
 
 pub mod auth;
 pub mod body;
+pub mod codegen;
 pub mod collection;
 pub mod cookies;
+pub mod curl;
 pub mod datafile;
 pub mod draft;
 pub mod environment;
