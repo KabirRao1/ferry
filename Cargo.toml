@@ -4,6 +4,7 @@ members = [
     "crates/ferry-core",
     "crates/ferry-http",
     "crates/ferry-store",
+    "crates/ferry-script",
     "crates/ferry-app",
     "crates/ferry-ui",
     "xtask",
@@ -28,6 +29,7 @@ categories = ["development-tools", "network-programming", "gui"]
 ferry-core = { path = "crates/ferry-core" }
 ferry-http = { path = "crates/ferry-http" }
 ferry-store = { path = "crates/ferry-store" }
+ferry-script = { path = "crates/ferry-script" }
 ferry-app = { path = "crates/ferry-app" }
 
 # External

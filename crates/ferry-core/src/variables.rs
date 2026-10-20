@@ -114,9 +114,13 @@ pub fn references(text: &str) -> Vec<Reference> {
 }
 
 // CONTRACT
-/// Where a variable is defined, in precedence order (F08-AC2).
+/// Where a variable is defined, in precedence order (F08-AC2, F15-AC6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScopeKind {
+    /// Set by a script with `pm.variables.set`, for one send or run.
+    Local,
+    /// The Collection Runner's data row (F16-AC3).
+    Data,
     Environment,
     Collection,
     Global,
@@ -125,6 +129,8 @@ pub enum ScopeKind {
 impl fmt::Display for ScopeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Local => "Local",
+            Self::Data => "Data",
             Self::Environment => "Environment",
             Self::Collection => "Collection",
             Self::Global => "Global",

@@ -1,0 +1,21 @@
+[package]
+name = "ferry-script"
+description = "Ferry scripts: pre-request and post-response JavaScript with the pm API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+ferry-core.workspace = true
+# QuickJS (ADR-0044). Default features are only `std`; no loader, no
+# dynamic loading.
+rquickjs = "0.14"
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
