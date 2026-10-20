@@ -106,6 +106,23 @@ impl App {
         ferry_core::time::unix_millis(self.ambient.now())
     }
 
+    /// Log a send whose scripts run first: the draft's method and URL
+    /// until the request is built (F18-AC1, F15-AC2).
+    pub(crate) fn started_scripted(&mut self, id: u64, draft: &RequestDraft) {
+        let method = draft.method.to_string();
+        let url = draft.url.clone();
+        let console = self
+            .console
+            .push(method.clone(), url.clone(), Vec::new(), String::new());
+        let pending = Pending {
+            draft: self.tab().draft.clone(),
+            method,
+            url,
+            console,
+        };
+        self.pending.insert(id, pending);
+    }
+
     /// Log a send that is starting (F18-AC1).
     pub(crate) fn started(&mut self, id: u64, request: &Request) {
         let draft = self.tab().draft.clone();

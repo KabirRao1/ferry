@@ -1204,6 +1204,7 @@ dependencies = [
  "fastrand",
  "ferry-core",
  "ferry-http",
+ "ferry-script",
  "ferry-store",
  "tokio",
  "url",

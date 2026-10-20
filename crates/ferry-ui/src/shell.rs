@@ -327,7 +327,7 @@ impl Shell {
                 }
                 None => Task::none(),
             },
-            effect @ Effect::Send { .. } => {
+            effect @ (Effect::Send { .. } | Effect::ScriptedSend { .. }) => {
                 Task::perform(ferry_app::run(effect, self.client.clone()), |message| {
                     message.map(Message::App)
                 })

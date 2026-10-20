@@ -62,6 +62,20 @@ impl FixedAmbient {
     }
 }
 
+impl FixedAmbient {
+    // CONTRACT
+    /// A fixed clock whose randomness starts from `seed`, so a send off the
+    /// UI thread gets values the app's ambient chose.
+    #[must_use]
+    pub fn with_seed(now: SystemTime, offset: i32, seed: u64) -> Self {
+        Self {
+            now,
+            offset,
+            next: seed,
+        }
+    }
+}
+
 impl Clock for FixedAmbient {
     fn now(&self) -> SystemTime {
         self.now

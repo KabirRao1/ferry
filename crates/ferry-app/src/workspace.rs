@@ -98,7 +98,7 @@ pub struct VarUse {
 }
 
 /// `parent/name`.
-fn join(parent: &str, name: &str) -> String {
+pub(crate) fn join(parent: &str, name: &str) -> String {
     format!("{parent}/{name}")
 }
 

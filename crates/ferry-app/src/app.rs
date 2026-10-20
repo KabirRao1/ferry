@@ -25,8 +25,9 @@ use crate::ambient::{Ambient, SystemAmbient};
 use crate::body_view::{self, BodyView};
 use crate::console::Console;
 use crate::doc::{Doc, EnvTarget};
+use crate::scripting::{ScriptReport, ScriptedSend};
 use crate::tab::{
-    BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, Tab, TabId,
+    BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, Tab, TabId, TestFilter,
 };
 use crate::workspace::{Dialog, Target};
 
@@ -99,6 +100,8 @@ pub enum Message {
     ResponseTabSelected(ResponseTab),
     /// Show the pre-request or post-response script (F15-AC1).
     ScriptPhaseSelected(ScriptPhase),
+    /// Narrow the Test Results list (F15-AC10).
+    TestFilterSelected(TestFilter),
     BodyFormatSelected(BodyFormat),
     Body(body_view::Message),
     /// Ask for a file for the active tab.
@@ -110,6 +113,13 @@ pub enum Message {
         path: Option<PathBuf>,
     },
     /// A send started by [`Effect::Send`] ended.
+    /// A send with scripts ended (F15).
+    ScriptedFinished {
+        tab: TabId,
+        id: u64,
+        result: Arc<Finished>,
+        report: Arc<ScriptReport>,
+    },
     Finished {
         tab: TabId,
         id: u64,
@@ -252,6 +262,16 @@ pub enum Effect {
         request: Request,
         cancel: CancellationToken,
         /// A snapshot of the jar (F17).
+        cookies: Cookies,
+    },
+    /// Run a request's scripts around its send with
+    /// [`crate::execute_scripted`] and report [`Message::ScriptedFinished`]
+    /// (F15-AC2).
+    ScriptedSend {
+        tab: TabId,
+        id: u64,
+        send: Box<ScriptedSend>,
+        cancel: CancellationToken,
         cookies: Cookies,
     },
     SaveSession(Session),
@@ -676,6 +696,7 @@ impl App {
             Message::RequestTabSelected(t) => self.tab_mut().request_tab = t,
             Message::ResponseTabSelected(t) => self.tab_mut().response_tab = t,
             Message::ScriptPhaseSelected(p) => self.tab_mut().script_phase = p,
+            Message::TestFilterSelected(f) => self.tab_mut().test_filter = f,
             Message::BodyFormatSelected(f) => {
                 self.tab_mut().select_format(f);
                 // The shown text changed.
@@ -693,6 +714,25 @@ impl App {
                     self.tabs[i].file_picked(target, path);
                     self.session_changed = true;
                 }
+            }
+            Message::ScriptedFinished {
+                tab,
+                id,
+                result,
+                report,
+            } => {
+                let saves = self.scripts_finished(id, &report);
+                let effect = self.send_finished(id, &result);
+                if let Some(i) = self.index_of(tab) {
+                    let now = self.now_ms();
+                    self.tabs[i].finished(id, result);
+                    self.tabs[i].received_cookies(now);
+                    self.tabs[i].scripts_ran(id, &report);
+                }
+                return match (saves, effect) {
+                    (Some(a), Some(b)) => Some(Effect::Batch(vec![a, b])),
+                    (a, b) => a.or(b),
+                };
             }
             Message::Finished { tab, id, result } => {
                 let effect = self.send_finished(id, &result);
@@ -812,6 +852,9 @@ impl App {
             tab.phase = Phase::Failed(error.to_string());
             return None;
         }
+        if let Some(send) = self.scripted(self.active) {
+            return Some(self.send_scripted(send));
+        }
         let request = match self.prepare(self.active) {
             Ok(request) => request,
             Err(error) => {
@@ -873,6 +916,22 @@ pub(crate) fn vars_for<'a>(
 /// the response body, and report the result as a message. Other effects
 /// return `None`; the UI runs them.
 pub async fn run(effect: Effect, client: Client) -> Option<Message> {
+    if let Effect::ScriptedSend {
+        tab,
+        id,
+        send,
+        cancel,
+        cookies,
+    } = effect
+    {
+        let (result, report) = crate::scripting::execute(*send, cancel, cookies, client).await;
+        return Some(Message::ScriptedFinished {
+            tab,
+            id,
+            result: Arc::new(result),
+            report: Arc::new(report),
+        });
+    }
     let Effect::Send {
         tab,
         id,
@@ -930,6 +989,9 @@ pub fn received(response: ferry_core::response::Response) -> Result<Received, St
         find: None,
         filter: crate::find::Filter::default(),
         send: 0,
+        tests: Vec::new(),
+        script_error: None,
+        visualizer: None,
     })
 }
 

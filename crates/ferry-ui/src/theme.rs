@@ -73,6 +73,18 @@ pub fn error(_: &Theme) -> text::Style {
     text::Style { color: Some(ERROR) }
 }
 
+pub fn success(_: &Theme) -> text::Style {
+    text::Style {
+        color: Some(SUCCESS),
+    }
+}
+
+pub fn warning(_: &Theme) -> text::Style {
+    text::Style {
+        color: Some(WARNING),
+    }
+}
+
 pub fn accent(_: &Theme) -> text::Style {
     text::Style {
         color: Some(ACCENT),

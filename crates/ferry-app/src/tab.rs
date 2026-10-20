@@ -15,6 +15,7 @@ use ferry_core::request::{Method, MethodError};
 use ferry_core::response::Response;
 use ferry_core::scripts::Phase as ScriptPhase;
 use ferry_http::CancellationToken;
+use ferry_script::{TestResult, Visualizer};
 
 use crate::body_view::{self, BodyView};
 use crate::doc::{self, ContainerSection, Doc, VarEdit};
@@ -93,6 +94,12 @@ pub struct Received {
     pub filter: Filter,
     /// The send that produced it; set when it reaches its tab.
     pub send: u64,
+    /// Tests from the send's scripts (F15-AC10).
+    pub tests: Vec<TestResult>,
+    /// Why the post-response scripts failed (F15-AC3).
+    pub script_error: Option<String>,
+    /// What `pm.visualizer.set` asked for (F22-AC5).
+    pub visualizer: Option<Visualizer>,
 }
 
 impl Received {
@@ -273,6 +280,46 @@ pub enum Edit {
 }
 
 // CONTRACT
+/// Which tests the Test Results tab lists (F15-AC10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TestFilter {
+    #[default]
+    All,
+    Passed,
+    Skipped,
+    Failed,
+}
+
+impl TestFilter {
+    pub const ALL: [TestFilter; 4] = [Self::All, Self::Passed, Self::Skipped, Self::Failed];
+
+    // CONTRACT
+    /// Whether a test with `status` is listed.
+    #[must_use]
+    pub fn keeps(self, status: ferry_script::TestStatus) -> bool {
+        use ferry_script::TestStatus;
+        matches!(
+            (self, status),
+            (Self::All, _)
+                | (Self::Passed, TestStatus::Passed)
+                | (Self::Skipped, TestStatus::Skipped)
+                | (Self::Failed, TestStatus::Failed)
+        )
+    }
+}
+
+impl std::fmt::Display for TestFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::All => "All",
+            Self::Passed => "Passed",
+            Self::Skipped => "Skipped",
+            Self::Failed => "Failed",
+        })
+    }
+}
+
+// CONTRACT
 /// One open request.
 #[derive(Debug)]
 pub struct Tab {
@@ -285,6 +332,8 @@ pub struct Tab {
     pub response_tab: ResponseTab,
     /// The script shown in the Scripts tab or section (F15-AC1).
     pub script_phase: ScriptPhase,
+    /// The Test Results filter (F15-AC10).
+    pub test_filter: TestFilter,
     /// Text of the method field, which may be a half-typed method.
     pub method_text: String,
     pub method_error: Option<MethodError>,
@@ -318,6 +367,7 @@ impl Tab {
             request_tab: RequestTab::default(),
             response_tab: ResponseTab::default(),
             script_phase: ScriptPhase::default(),
+            test_filter: TestFilter::default(),
             method_error: None,
             bulk: Vec::new(),
             show_auto_headers: false,

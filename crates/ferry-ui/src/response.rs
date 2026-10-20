@@ -13,7 +13,7 @@ use iced::widget::{
 use iced::{Alignment, Fill, FillPortion, Font};
 
 use crate::request::underline;
-use crate::screen::{SMALL, TEXT, coming};
+use crate::screen::{SMALL, TEXT};
 use crate::shell::Message;
 use crate::{Element, body_view, theme};
 
@@ -102,7 +102,15 @@ pub fn tab_label(received: &Received, which: ResponseTab) -> String {
         ResponseTab::Body => "Body".into(),
         ResponseTab::Cookies => format!("Cookies ({})", received.cookies.len()),
         ResponseTab::Headers => format!("Headers ({})", received.response.headers.len()),
-        ResponseTab::TestResults => "Test Results".into(),
+        ResponseTab::TestResults if received.tests.is_empty() => "Test Results".into(),
+        ResponseTab::TestResults => {
+            let passed = received
+                .tests
+                .iter()
+                .filter(|t| t.status == ferry_app::TestStatus::Passed)
+                .count();
+            format!("Test Results ({passed}/{})", received.tests.len())
+        }
     }
 }
 
@@ -148,10 +156,7 @@ fn received<'a>(state: &'a App, tab: &'a Tab, received: &'a Received) -> Element
         ResponseTab::Body => body(state, tab, received),
         ResponseTab::Headers => headers(received),
         ResponseTab::Cookies => cookies(received),
-        ResponseTab::TestResults => coming(
-            "Test results arrive in Phase 4",
-            "Write tests in post-response scripts with pm.test and see which pass here.",
-        ),
+        ResponseTab::TestResults => crate::tests::view(tab, received),
     };
     column![header, container(content).padding([4, 16]).height(Fill)].into()
 }

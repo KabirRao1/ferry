@@ -17,6 +17,7 @@ pub mod screen;
 pub mod scripts;
 pub mod shell;
 pub mod sidebar;
+pub mod tests;
 pub mod theme;
 
 /// The `iced` element type used across Ferry views.

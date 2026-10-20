@@ -241,9 +241,6 @@ fn f14_ac5_later_features_explain_themselves_and_do_nothing() {
         assert!(got.is_empty(), "{label} emitted {got:?}");
     }
 
-    let mut app = app_with(ok_response("x", "text/plain"));
-    app.update(AppMessage::ResponseTabSelected(ResponseTab::TestResults));
-    assert!(has(&shell_for(app), "Test results arrive in Phase 4"));
     let mut app = App::default();
     app.update(AppMessage::SidebarSection(
         ferry_app::SidebarSection::History,

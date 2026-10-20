@@ -119,6 +119,12 @@ fn entry_view(entry: &ConsoleEntry, expanded: bool) -> Element<'_, Message> {
             .push(section("Request Body"))
             .push(mono(&entry.request_body));
     }
+    if !entry.script_lines.is_empty() {
+        details = details.push(section("Script Output"));
+        for line in &entry.script_lines {
+            details = details.push(script_line(line));
+        }
+    }
     match &entry.state {
         ConsoleState::Pending => {
             details = details.push(text("Sending…").size(SMALL).style(theme::muted));
@@ -184,4 +190,22 @@ fn mono(content: &str) -> iced::widget::Text<'_> {
         .font(Font::MONOSPACE)
         .shaping(Shaping::Basic)
         .wrapping(Wrapping::WordOrGlyph)
+}
+
+/// A script `console` line with its level (F15-AC11).
+fn script_line(line: &ferry_app::ScriptLine) -> Element<'_, Message> {
+    let (label, style): (&str, fn(&iced::Theme) -> iced::widget::text::Style) = match line.level {
+        ferry_app::ScriptLevel::Log => ("log", theme::faint),
+        ferry_app::ScriptLevel::Info => ("info", theme::accent),
+        ferry_app::ScriptLevel::Warn => ("warn", theme::warning),
+        ferry_app::ScriptLevel::Error => ("error", theme::error),
+    };
+    row![
+        text(label).size(SMALL).style(style).width(40),
+        text(line.text.as_str())
+            .size(SMALL)
+            .font(iced::Font::MONOSPACE),
+    ]
+    .spacing(6)
+    .into()
 }

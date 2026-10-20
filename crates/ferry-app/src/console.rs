@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
+use crate::scripting::ScriptLine;
 use ferry_core::format;
 use ferry_core::request::RequestBody;
 use ferry_core::response::Header;
@@ -44,6 +45,8 @@ pub struct ConsoleEntry {
     pub request_headers: Vec<Header>,
     pub request_body: String,
     pub state: ConsoleState,
+    /// Script `console` output (F15-AC11).
+    pub script_lines: Vec<ScriptLine>,
 }
 
 impl ConsoleEntry {
@@ -122,6 +125,7 @@ impl Console {
             request_headers,
             request_body,
             state: ConsoleState::Pending,
+            script_lines: Vec::new(),
         });
         if self.entries.len() > CONSOLE_MAX {
             let excess = self.entries.len() - CONSOLE_MAX;

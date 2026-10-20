@@ -11,6 +11,7 @@ pub mod console;
 mod doc;
 mod find;
 mod preview;
+mod scripting;
 mod tab;
 mod workspace;
 
@@ -46,14 +47,22 @@ pub use ferry_core::text::IndexError;
 pub use ferry_core::variables::{Origin, ScopeKind, Variable};
 pub use ferry_core::workspace::{EnvironmentEntry, Op, Workspace};
 pub use ferry_http::{Client, Config, Cookies};
+pub use ferry_script::{
+    Info as ScriptInfo, Level as ScriptLevel, Location as ScriptLocation, Script, TestResult,
+    TestStatus, Variables as ScriptVariables, Visualizer,
+};
 pub use ferry_store::{
     CookieStore, HistoryStore, Loaded, MemFs, OpError, RealFs, Restored, SessionStore,
     WorkspaceStore, data_dir, watch,
 };
 pub use find::{FILTER_TOO_LARGE, Filter, FilterState, Find, NO_RESULTS, run as run_find};
 pub use preview::{PREVIEW_UNAVAILABLE, PreviewTarget, extension, previewable};
+pub use scripting::{
+    ScriptLine, ScriptReport, ScriptedSend, Sent, Targets as ScriptTargets, apply as apply_script,
+    execute as execute_scripted, script_request, script_response,
+};
 pub use tab::{
     BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, RowEdit, Tab, TabId,
-    Table,
+    Table, TestFilter,
 };
 pub use workspace::{Dialog, Target, VarState, VarUse};

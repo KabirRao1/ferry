@@ -17,14 +17,14 @@
 | F12 | Settings | 7 | not started | 0 | 0 |
 | F13 | Keyboard | 7 | not started | 0 | 0 |
 | F14 | Workbench layout | 2, 3 (AC6) | done | 13 | 0 |
-| F15 | Scripts and tests | 4 | not started | 0 | 0 |
+| F15 | Scripts and tests | 4 | done | 53 | 0 |
 | F16 | Collection Runner and CLI | 4 | not started | 0 | 0 |
 | F17 | Cookies | 3 | done | 36 | 0 |
 | F18 | Console | 3 | done | 10 | 0 |
 | F19 | Code snippets | 5 | not started | 0 | 0 |
 | F20 | Advanced auth | 5 | not started | 0 | 0 |
 | F21 | Network settings | 5 | not started | 0 | 0 |
-| F22 | Preview and Visualize | 3 (Preview, JSONPath filter), 4 (Visualize) | Preview and filter done; Visualize in Phase 4 (ADR-0041) | 24 | 0 |
+| F22 | Preview and Visualize | 3 (Preview, JSONPath filter), 4 (Visualize) | Preview and filter done; Visualize in Phase 4 (ADR-0041) | 25 | 0 |
 | F23 | GraphQL | 6 | not started | 0 | 0 |
 | F24 | WebSocket and Socket.IO | 6 | not started | 0 | 0 |
 | F25 | Server-sent events | 6 | not started | 0 | 0 |
