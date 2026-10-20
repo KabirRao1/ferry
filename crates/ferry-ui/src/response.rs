@@ -261,6 +261,11 @@ fn body<'a>(state: &'a App, tab: &'a Tab, received: &'a Received) -> Element<'a,
     }
     let content: Element<'_, Message> = if received.format == BodyFormat::Preview {
         preview(state)
+    } else if received.format == BodyFormat::Visualize {
+        match &received.visualized {
+            Some(Err(error)) => center(text(error.as_str()).size(TEXT).style(theme::error)).into(),
+            _ => preview(state),
+        }
     } else if received.response.body.is_empty() && received.format != BodyFormat::Hex {
         center(text(EMPTY_BODY).size(TEXT).style(theme::muted)).into()
     } else {

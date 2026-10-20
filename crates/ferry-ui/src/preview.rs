@@ -19,8 +19,8 @@ pub const PREVIEW_AREA: &str = "preview-area";
 /// Keeps the web view in step with [`ferry_app::App::preview`].
 #[derive(Debug, Default)]
 pub struct Preview {
-    /// The response shown, if any.
-    shown: Option<(TabId, u64)>,
+    /// The response shown, if any, and whether as a Visualize page.
+    shown: Option<(TabId, u64, bool)>,
     /// Bumped by every change. Creating a web view is asynchronous, so a
     /// create that finds a newer generation was overtaken and does nothing.
     generation: Arc<AtomicU64>,
@@ -29,7 +29,7 @@ pub struct Preview {
 impl Preview {
     /// Create, replace or destroy the web view so it shows `want`.
     pub fn sync(&mut self, want: Option<PreviewTarget>) -> Task<Message> {
-        let key = want.as_ref().map(|t| (t.tab, t.send));
+        let key = want.as_ref().map(|t| (t.tab, t.send, t.scripts));
         if key == self.shown {
             return Task::none();
         }
@@ -191,14 +191,20 @@ mod platform {
         // executable (which may not be writable).
         let mut context = WebContext::new(Some(std::env::temp_dir().join("ferry-webview")));
         let (mime, body) = (target.mime.clone(), target.body.clone());
-        let view = WebViewBuilder::new_with_web_context(&mut context)
+        let scripts = target.scripts;
+        let builder = WebViewBuilder::new_with_web_context(&mut context)
             // The body, from memory, with its own type (F22-AC2). Anything
             // else the page asks Ferry for does not exist.
             .with_custom_protocol("ferry".to_owned(), move |_, request| {
                 let response = if request.uri().path() == "/" {
-                    Response::builder()
-                        .header(header::CONTENT_TYPE, mime.as_str())
-                        .body(Cow::Owned(body.to_vec()))
+                    let mut response =
+                        Response::builder().header(header::CONTENT_TYPE, mime.as_str());
+                    if scripts {
+                        // Visualize: scripts run, but reach nothing (ADR-0046).
+                        response =
+                            response.header("Content-Security-Policy", ferry_app::visualize::CSP);
+                    }
+                    response.body(Cow::Owned(body.to_vec()))
                 } else {
                     Response::builder()
                         .status(StatusCode::NOT_FOUND)
@@ -213,11 +219,17 @@ mod platform {
             .with_navigation_handler(|url| is_preview(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .with_download_started_handler(|_, _| false)
-            .with_javascript_disabled()
             .with_devtools(false)
             .with_clipboard(false)
             .with_autoplay(false)
-            .with_background_color((255, 255, 255, 255))
+            .with_background_color((255, 255, 255, 255));
+        // Preview runs no scripts at all; Visualize runs the page's own.
+        let builder = if target.scripts {
+            builder
+        } else {
+            builder.with_javascript_disabled()
+        };
+        let view = builder
             .build_as_child(&window)
             .map_err(|e| format!("The web view could not start: {e}"))?;
         SHOWN.with(|shown| {

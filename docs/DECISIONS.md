@@ -202,7 +202,10 @@ The Windows release binary grew from 8.95 MB to 12.73 MB (+42%), past the 10% re
 ## ADR-0047: The runner lives in ferry-app; ferry-cli is a thin binary (2026-10-19)
 **Context.** F16 needs the same run logic in the app and in a headless CLI, and the CLI must not pull in iced.
 **Decision.** The run loop (order, iterations, data rows, delay, `setNextRequest`, results) is in `ferry-app`, which has no UI dependency, and is driven by messages like every other flow, so it is tested without a window. Sending and scripts run as effects. `ferry-cli` is a new crate with one binary that loads a workspace with `ferry-store`, runs the loop to the end and prints results; it depends on `ferry-app` and `ferry-store` only.
-**Consequences.** The architecture table gains `ferry-script` (core) and `ferry-cli` (app, store). The CLI and the app cannot drift apart. The CLI is a separate download from the desktop app in releases.
+**Consequences.** The architecture table gains `ferry-script` (core) and `ferry-cli` (app, store). The CLI and the app cannot drift apart. Release archives hold both binaries; `ferry-cli` is built with its own cargo command, so it never carries the UI's features.
+
+## ADR-0048: Binary-size re-baseline for Phase 4 (2026-10-20)
+The Windows release binary grew from 12.73 MB to 15.23 MB (+20%), past the 10% guard: scripts with QuickJS +1.57 MB (14.30 MB in CI run 39369478191), then the Collection Runner, data files and Visualize with `handlebars` +0.93 MB. The growth is the Phase 4 scope (ADR-0044, ADR-0046). The Windows baseline is re-recorded (2026-10-20: 15.23 MB; idle RSS with 10 tabs 1.27x the empty window; cold start 75 ms; scroll p95 3.39 ms), and the Linux and macOS baselines are cleared and re-recorded from the next CI run, as in ADR-0042. `ferry-cli` is not measured; it ships beside `ferry`.
 
 ---
 

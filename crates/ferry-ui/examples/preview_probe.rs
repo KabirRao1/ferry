@@ -2,7 +2,10 @@
 //! view by eye (F22-AC1, F22-AC2): the page should render, its script must
 //! not run, and its link and `window.open` must go nowhere.
 //!
-//! `cargo run -p ferry-ui --example preview_probe [html|svg|redirect|leave|pdf <file>]`
+//! `cargo run -p ferry-ui --example preview_probe [html|svg|redirect|leave|visualize|pdf <file>]`
+//!
+//! `visualize` shows a Visualize page (F22-AC5): its inline script must run
+//! and fill the table from `pm.getData`, and its network request must fail.
 //!
 //! `leave` switches to Raw after 3 s: the web view must be gone (F22-AC1).
 
@@ -11,7 +14,7 @@ use std::time::Duration;
 
 use ferry_app::{
     App, BodyFormat, Bytes, Client, Config, Edit, Effect, Finished, Header, Message, Response,
-    received,
+    ScriptPhase, ScriptReport, Visualizer, received,
 };
 use ferry_ui::screen::TEXT;
 use ferry_ui::shell::{self, Shell};
@@ -69,6 +72,72 @@ const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height
 const REDIRECT: &str = r#"<!doctype html><meta http-equiv="refresh" content="0;url=https://example.com/">
 <body style="font-family:sans-serif;margin:24px"><h1>Still here</h1><p>The redirect was refused.</p></body>"#;
 
+const TEMPLATE: &str = r##"<style>body{font-family:sans-serif;margin:24px} td{padding:4px 10px;border:1px solid #ccc}</style>
+<h1>Visualize probe</h1>
+<p id="js">Inline script did not run.</p>
+<p id="net">Network: not tried yet.</p>
+<ul>{{#each rows}}<li>{{name}} has {{n}}</li>{{/each}}</ul>
+<table id="t"></table>
+<script>
+document.getElementById('js').textContent = 'Inline script ran.';
+pm.getData(function (err, data) {
+  var t = document.getElementById('t');
+  data.rows.forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.name + '</td><td>' + r.n + '</td>';
+    t.appendChild(tr);
+  });
+});
+fetch('https://example.com/').then(function () {
+  document.getElementById('net').textContent = 'Network: REACHED (must not happen)';
+}, function () {
+  document.getElementById('net').textContent = 'Network: blocked.';
+});
+</script>"##;
+
+/// An app whose scripted send produced a Visualize page.
+fn visualized() -> App {
+    let mut app = App::default();
+    app.update(Message::Edit(Edit::Url("https://preview.test/".into())));
+    app.update(Message::Edit(Edit::Script(
+        ScriptPhase::PostResponse,
+        "pm.visualizer.set(template, data);".into(),
+    )));
+    if let Some(Effect::ScriptedSend { tab, id, .. }) = app.update(Message::SendPressed) {
+        let response = Response {
+            status: 200,
+            reason: "OK".into(),
+            headers: vec![Header {
+                name: "content-type".into(),
+                value: "application/json".into(),
+            }],
+            body: Bytes::from_static(b"{}"),
+            elapsed: Duration::from_millis(5),
+            url: "https://preview.test/".into(),
+            ..Response::default()
+        };
+        let result = match received(response) {
+            Ok(r) => Finished::Received(Box::new(r)),
+            Err(error) => Finished::Failed(error),
+        };
+        let report = ScriptReport {
+            visualizer: Some(Visualizer {
+                template: TEMPLATE.into(),
+                data: r#"{"rows": [{"name": "Ada", "n": 3}, {"name": "Bob", "n": 5}]}"#.into(),
+            }),
+            ..ScriptReport::default()
+        };
+        app.update(Message::ScriptedFinished {
+            tab,
+            id,
+            result: Arc::new(result),
+            report: Arc::new(report),
+        });
+    }
+    app.update(Message::BodyFormatSelected(BodyFormat::Visualize));
+    app
+}
+
 fn main() -> iced::Result {
     let kind = std::env::args().nth(1).unwrap_or_else(|| "html".into());
     let (mime, body): (&str, Bytes) = match kind.as_str() {
@@ -96,6 +165,12 @@ fn main() -> iced::Result {
     };
     iced::application(
         move || {
+            if kind == "visualize" {
+                return Probe {
+                    shell: Shell::new(visualized(), client.clone(), None),
+                    leave: false,
+                };
+            }
             let mut app = App::default();
             app.update(Message::Edit(Edit::Url("https://preview.test/".into())));
             if let Some(Effect::Send { tab, id, .. }) = app.update(Message::SendPressed) {

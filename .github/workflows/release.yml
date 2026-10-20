@@ -33,7 +33,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev
       - name: Build
-        run: cargo build --release --locked -p ferry-ui --bin ferry --target ${{ matrix.target }}
+        run: |
+          cargo build --release --locked -p ferry-ui --bin ferry --target ${{ matrix.target }}
+          cargo build --release --locked -p ferry-cli --bin ferry-cli --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
@@ -41,11 +43,11 @@ jobs:
           mkdir "$name"
           cp README.md LICENSE CHANGELOG.md "$name/"
           if [ "${{ matrix.archive }}" = zip ]; then
-            cp "target/${{ matrix.target }}/release/ferry.exe" "$name/"
+            cp "target/${{ matrix.target }}/release/ferry.exe" "target/${{ matrix.target }}/release/ferry-cli.exe" "$name/"
             7z a "$name.zip" "$name" > /dev/null
             echo "ASSET=$name.zip" >> "$GITHUB_ENV"
           else
-            cp "target/${{ matrix.target }}/release/ferry" "$name/"
+            cp "target/${{ matrix.target }}/release/ferry" "target/${{ matrix.target }}/release/ferry-cli" "$name/"
             tar czf "$name.tar.gz" "$name"
             echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
           fi

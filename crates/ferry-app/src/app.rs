@@ -1072,6 +1072,7 @@ pub fn received(response: ferry_core::response::Response) -> Result<Received, St
         tests: Vec::new(),
         script_error: None,
         visualizer: None,
+        visualized: None,
     })
 }
 

@@ -19,6 +19,8 @@ ferry-core.workspace = true
 ferry-http.workspace = true
 ferry-script.workspace = true
 ferry-store.workspace = true
+# Visualize templates (F22-AC5, ADR-0046).
+handlebars = { version = "6", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 # Scripts run on blocking threads beside the send (F15).

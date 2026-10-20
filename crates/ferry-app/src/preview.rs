@@ -74,6 +74,8 @@ pub struct PreviewTarget {
     pub send: u64,
     pub mime: String,
     pub body: Bytes,
+    /// A Visualize page: its inline scripts run (F22-AC5, ADR-0046).
+    pub scripts: bool,
 }
 
 impl Received {
@@ -107,15 +109,26 @@ impl App {
         let Phase::Received(received) = &tab.phase else {
             return None;
         };
-        if received.format != BodyFormat::Preview {
-            return None;
+        match received.format {
+            BodyFormat::Preview => Some(PreviewTarget {
+                tab: tab.id,
+                send: received.send,
+                mime: received.preview_type()?,
+                body: received.response.body.clone(),
+                scripts: false,
+            }),
+            BodyFormat::Visualize => match &received.visualized {
+                Some(Ok(page)) => Some(PreviewTarget {
+                    tab: tab.id,
+                    send: received.send,
+                    mime: "text/html".to_owned(),
+                    body: page.clone(),
+                    scripts: true,
+                }),
+                _ => None,
+            },
+            _ => None,
         }
-        Some(PreviewTarget {
-            tab: tab.id,
-            send: received.send,
-            mime: received.preview_type()?,
-            body: received.response.body.clone(),
-        })
     }
 
     // CONTRACT
@@ -151,6 +164,15 @@ impl App {
                 let Phase::Received(received) = &self.tab().phase else {
                     return None;
                 };
+                if received.format == BodyFormat::Visualize {
+                    let Some(Ok(page)) = &received.visualized else {
+                        return None;
+                    };
+                    return Some(Effect::OpenInBrowser {
+                        body: page.clone(),
+                        extension: "html",
+                    });
+                }
                 let mime = received.preview_type()?;
                 Some(Effect::OpenInBrowser {
                     body: received.response.body.clone(),

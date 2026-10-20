@@ -669,6 +669,7 @@ impl crate::Tab {
             received.tests.clone_from(&report.tests);
             received.script_error.clone_from(&report.error);
             received.visualizer.clone_from(&report.visualizer);
+            received.visualized = report.visualizer.as_ref().map(crate::visualize::render);
         }
     }
 }

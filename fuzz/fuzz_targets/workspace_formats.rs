@@ -1,10 +1,10 @@
-//! F08-AC10, F09-AC2, F10-AC6, F17-AC6: every file format Ferry reads from
+//! F08-AC10, F09-AC2, F10-AC6, F16-AC3, F17-AC6: every file format Ferry reads from
 //! the workspace or the data directory parses any text without panicking,
 //! and whatever it parses writes back to text that parses and writes the
 //! same way again.
 #![no_main]
 
-use ferry_core::{collection, cookies, environment, history};
+use ferry_core::{collection, cookies, datafile, environment, history};
 use libfuzzer_sys::fuzz_target;
 
 const NOW: i64 = 1_792_264_040_000;
@@ -42,6 +42,10 @@ fuzz_target!(|data: &[u8]| {
         let written = history::write(&file);
         let again = history::parse(&written).expect("history");
         assert_eq!(history::write(&again), written);
+    }
+    // F16-AC3: data files parse or are refused, never panic.
+    if let Ok(rows) = datafile::parse(text) {
+        assert!(!rows.is_empty());
     }
     if let Ok(jar) = cookies::parse(text, NOW) {
         let written = cookies::write(&jar);

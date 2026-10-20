@@ -78,6 +78,37 @@ Write `{{name}}` anywhere in a request to use a variable. Values come from the e
 - **Preview** shows HTML, images, audio, video and PDFs (Windows and macOS); **Open in Browser** opens the body with your default application.
 - **Save as Example** keeps a response with its saved request.
 
+### Scripts and tests
+
+Each request, folder and collection has a **Scripts** tab with a **Pre-request** script, which runs before the request is sent, and a **Post-response** script, which runs after the response arrives. Scripts are JavaScript with Postman's `pm` API:
+
+```js
+// Pre-request: log in and keep the token for this environment.
+pm.sendRequest({ url: pm.variables.get("base") + "/login", method: "POST" }, (err, res) => {
+  pm.environment.set("token", res.json().token);
+});
+
+// Post-response: tests show up in the response's Test Results tab.
+pm.test("status is 200", () => pm.response.to.have.status(200));
+pm.test("has an id", () => pm.expect(pm.response.json().id).to.be.a("number"));
+```
+
+Scripts run in a sandbox with no file, process or network access (apart from `pm.sendRequest`), stop after 5 seconds or 64 MB, and log `console.log` output to the Console. Values scripts store with `pm.environment.set`, `pm.globals.set` or `pm.collectionVariables.set` go to the git-ignored `*.local.toml` files, so running scripts never changes the files you share.
+
+`pm.visualizer.set(template, data)` adds a **Visualize** view to the response: a [Handlebars](https://handlebarsjs.com/) template rendered with your data. Its own scripts can run, for example to draw a chart, but it cannot load or send anything over the network.
+
+### Collection Runner and CLI
+
+**Run** on a collection or folder (its `…` menu, its settings, or **Runner** in the footer) opens the Collection Runner: pick the requests, the number of iterations, a delay and an optional CSV or JSON data file (one iteration per row, its columns available as variables and `pm.iterationData`), then **Run**. Results appear as they finish; **Export Results** saves a JSON report. `pm.execution.setNextRequest("Name")` jumps to another request.
+
+The same runs work headless, for CI, with `ferry-cli`, which release archives include:
+
+```sh
+ferry-cli run collections/api --workspace path/to/workspace --environment staging --data users.csv --report report.json
+```
+
+It prints each request and its failed tests, and exits with 0 when everything passed, 1 when a request or test failed, and 2 for invalid arguments.
+
 | Shortcut | Action |
 |---|---|
 | Ctrl+Enter | Send |
@@ -99,8 +130,8 @@ Ferry is heading for Postman's layout and every Postman feature that runs on you
 | 1 | Send a request, see status, headers and body | ✅ done |
 | 2 | Postman-style workbench, query params, headers, bodies, auth, tabs, redirect/TLS options, timing breakdown | ✅ done |
 | 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | ✅ done |
-| 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI, Visualize | next |
-| 5 | Import/export (Postman, cURL, OpenAPI, HAR), code snippets, OAuth and other auth, proxy and certificates, vault | planned |
+| 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI, Visualize | ✅ done |
+| 5 | Import/export (Postman, cURL, OpenAPI, HAR), code snippets, OAuth and other auth, proxy and certificates, vault | next |
 | 6 | GraphQL, WebSocket, Socket.IO, server-sent events, gRPC, MQTT | planned |
 | 7 | Local mock server, docs generation, find and replace, settings, keyboard, releases | planned |
 

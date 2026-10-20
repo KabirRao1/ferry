@@ -905,7 +905,7 @@ fn f06_ac6_only_bodies_that_look_like_json_are_pretty_printed() {
     let r = received(response(200, "OK", "text/plain", br#"{"a":1}"#)).unwrap();
     assert_eq!(r.format, BodyFormat::Pretty);
     let labels: Vec<String> = BodyFormat::ALL.iter().map(ToString::to_string).collect();
-    assert_eq!(labels, ["Pretty", "Raw", "Hex", "Preview"]);
+    assert_eq!(labels, ["Pretty", "Raw", "Hex", "Preview", "Visualize"]);
 }
 
 #[test]

@@ -10,6 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 ferry-core = { path = "../crates/ferry-core" }
+ferry-script = { path = "../crates/ferry-script" }
 
 # Not part of the root workspace (ADR-0009).
 [workspace]
@@ -52,6 +53,13 @@ bench = false
 [[bin]]
 name = "workspace_formats"
 path = "fuzz_targets/workspace_formats.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "script"
+path = "fuzz_targets/script.rs"
 test = false
 doc = false
 bench = false

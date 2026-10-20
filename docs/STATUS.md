@@ -1,11 +1,11 @@
 # Status
 
-**Phase:** 4 in progress (user asked 2026-10-19 to build the remaining phases). Phase 3 is complete once CI is green.
+**Phase:** 4 complete locally (user asked 2026-10-19 to build the remaining phases); next is Phase 5.
 
 ## Phase 3 progress (resume here)
 - Phase 3 complete: CI run 39364317363 (c2b6ed3) green on Linux, macOS and Windows, fuzz smoke included. Linux and macOS budget baselines recorded from it (binary 15.09 MB and 10.10 MB; idle RSS 1.64x and 1.06x; macOS scroll p95 15.47 ms, FND-008).
 - User asked (2026-10-19) to build the remaining phases (4-7) for a public release; go phase by phase, each pushed green, with a short summary at each boundary.
-- Phase 4 progress: spec and ADR-0044..0047 committed; F15 scripts done (ferry-script crate, editors, scripted sends with tests, console output and local variable saves, Test Results tab). Next: F16 runner (ferry-app) and Runner tab, ferry-cli, F22-AC5 Visualize, script fuzz target, CHANGELOG/README, budgets re-baseline for QuickJS.
+- Phase 4 done: F15 scripts (ferry-script, QuickJS), F16 Collection Runner and ferry-cli, F22-AC5 Visualize (checked by eye with `examples/preview_probe.rs visualize`: inline script runs, fetch is blocked; Preview still runs no scripts). Fuzz target `script`; data files fuzzed in `workspace_formats`. Windows budgets re-recorded (ADR-0048, 15.23 MB); Linux and macOS baselines cleared, to record from the next CI run. Pushes were held after d71fd70 (its CI failed only the binary-size budget) until the re-baseline.
 - 555 tests pass on Windows; clippy clean.
 - Mutation testing: the local Phase 3 run was stopped by the system for low memory after 132 of 523 core mutants (113 caught, 1 timeout, 14 unviable, 4 missed); store and app were not reached. The 4 missed (collection.rs `toml_error` line number and `restore_originals`; cookies.rs empty `SameSite` and `parse_date` minute/second check) and 8 hand-applied mutants of the FND-017 limit are all caught by new tests. The nightly covers the rest; pushes to main mutation-test nothing (their diff against origin/main is empty).
 - Budgets re-recorded on Windows (ADR-0042): binary 12.73 MB, idle RSS with 10 tabs 28.0 MB (1.24x), cold start 95 ms, 50 MB scroll p95 3.21 ms. Linux and macOS baselines are cleared; record them from the CI run's logged values. FND-018: the budget used to measure `ferry` built with the examples, which added a test-only font.

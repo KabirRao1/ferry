@@ -52,14 +52,17 @@ pub enum BodyFormat {
     Hex,
     /// Rendered by a web view (F22-AC1).
     Preview,
+    /// A `pm.visualizer.set` page (F22-AC5).
+    Visualize,
 }
 
 impl BodyFormat {
-    pub const ALL: [BodyFormat; 4] = [
+    pub const ALL: [BodyFormat; 5] = [
         BodyFormat::Pretty,
         BodyFormat::Raw,
         BodyFormat::Hex,
         BodyFormat::Preview,
+        BodyFormat::Visualize,
     ];
 }
 
@@ -70,6 +73,7 @@ impl std::fmt::Display for BodyFormat {
             Self::Raw => "Raw",
             Self::Hex => "Hex",
             Self::Preview => "Preview",
+            Self::Visualize => "Visualize",
         })
     }
 }
@@ -100,6 +104,8 @@ pub struct Received {
     pub script_error: Option<String>,
     /// What `pm.visualizer.set` asked for (F22-AC5).
     pub visualizer: Option<Visualizer>,
+    /// Its page, or why the template did not render.
+    pub visualized: Option<Result<bytes::Bytes, String>>,
 }
 
 impl Received {
@@ -116,7 +122,7 @@ impl Received {
             BodyFormat::Raw => &self.raw,
             BodyFormat::Hex => &self.hex,
             // The web view shows the body; the text views stay as they are.
-            BodyFormat::Preview => &self.raw,
+            BodyFormat::Preview | BodyFormat::Visualize => &self.raw,
         }
     }
 
@@ -128,7 +134,7 @@ impl Received {
             },
             BodyFormat::Raw => &mut self.raw,
             BodyFormat::Hex => &mut self.hex,
-            BodyFormat::Preview => &mut self.raw,
+            BodyFormat::Preview | BodyFormat::Visualize => &mut self.raw,
         }
     }
 
@@ -152,6 +158,7 @@ impl Received {
             .into_iter()
             .filter(|f| *f != BodyFormat::Pretty || self.pretty.is_some())
             .filter(|f| *f != BodyFormat::Preview || self.preview_type().is_some())
+            .filter(|f| *f != BodyFormat::Visualize || self.visualized.is_some())
             .collect()
     }
 }

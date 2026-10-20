@@ -15,6 +15,7 @@ pub mod runner;
 mod runner_tab;
 mod scripting;
 mod tab;
+pub mod visualize;
 mod workspace;
 
 pub use activity::{CookieEditor, CookieManager, Pending, TRUNCATED_NOTE, history_response};

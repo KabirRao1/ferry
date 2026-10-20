@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Scripts: pre-request and post-response JavaScript on requests, folders and collections, with Postman's `pm` API (`pm.test`, `pm.expect`, `pm.response`, `pm.request`, `pm.environment`, `pm.variables`, `pm.sendRequest` and more), run in a QuickJS sandbox with time and memory limits.
+- Test Results tab with passed, failed and skipped tests and filters; script `console` output in the Console.
+- Collection Runner: run a collection or folder with iterations, a delay and CSV or JSON data files, follow results live, stop, and export a JSON report.
+- `ferry-cli run` for running collections in CI, with exit codes and a JSON report.
+- Visualize: render a Handlebars template from `pm.visualizer.set` in the response pane, with scripts allowed and the network blocked.
+
 - Workspace folder: collections, folders, requests, environments and globals saved as plain TOML files you can keep in git, with outside changes picked up live and `Open Workspace…` to switch folders.
 - Collections sidebar: create, rename, duplicate, delete and drag to reorder or move; collection and folder settings (description, auth, variables); search across saved requests.
 - Variables: `{{name}}` in the URL, params, headers, body and auth, from the selected environment, the collection and globals, with nesting, dynamic variables such as `{{$guid}}` and `{{$timestamp}}`, and a strip showing where each one comes from. Secret values stay in `*.local.toml` files that git ignores.
