@@ -288,9 +288,15 @@ impl App {
                         Some(example) => {
                             let fields = ExampleFields::from_example(example);
                             e.request = example.request.clone();
-                            if e.draft == e.saved && e.draft != fields {
+                            // A draft that saves to this example, such as one
+                            // with a disabled header the file leaves out, is
+                            // clean too (FND-019).
+                            let same = e.draft.to_example(&e.request).as_ref() == Ok(example);
+                            if (e.draft == e.saved || same) && e.draft != fields {
+                                if e.draft.body != fields.body {
+                                    e.body_revision += 1;
+                                }
                                 e.draft = fields.clone();
-                                e.body_revision += 1;
                             }
                             e.saved = fields;
                         }

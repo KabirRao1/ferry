@@ -325,6 +325,19 @@ fn f17_ac5_set_cookie_text_round_trips() {
 // --- F17-AC6 persistence ------------------------------------------------------------------
 
 #[test]
+fn f17_ac6_odd_hosts_round_trip() {
+    // Found by the `set_cookie` fuzz target: a host-only cookie keeps its
+    // host as the domain, even one no URL would produce.
+    let mut jar = Jar::default();
+    for host in ["..d	:", ".a.test", "A.Test", "[::1]", "ü.test"] {
+        let _ = jar.store("/!=:\"", host, "/", NOW);
+    }
+    let text = cookies::write(&jar);
+    assert!(text.contains(".a.test") && text.contains("[::1]"), "{text}");
+    assert_eq!(cookies::parse(&text, NOW).unwrap(), jar, "{text}");
+}
+
+#[test]
 fn f17_ac6_format_drops_expired_cookies() {
     let mut jar = Jar::default();
     stored(&mut jar, "keep=1", "h.test", "/");

@@ -179,6 +179,11 @@ The Windows release binary grew from 8.15 MB to 9.37 MB (+15%), past the 10% reg
 ## ADR-0042: Binary-size re-baseline for Phase 3 (2026-10-18)
 The Windows release binary grew from 8.95 MB to 12.73 MB (+42%), past the 10% regression guard. (The recorded Phase 2 baseline said 9.37 MB, but that build carried a test-only font; FND-018. All sizes here are `ferry` built on its own, as released.) Measured per step: variables, environments, collections and the workspace watcher +1.24 MB (10.19 MB at 18ef86d); history, cookies, console, search and the JSONPath filter +2.11 MB (12.30 MB at a38a041); the Preview web view (`wry`, WebView2) +0.43 MB. The growth is the Phase 3 scope from ADR-0027, so the Windows baseline is re-recorded (2026-10-19: 12.73 MB; idle RSS with 10 tabs 28.0 MB, 1.24x the empty window; cold start 95 ms; scroll p95 3.21 ms) and the Linux and macOS baselines are cleared and re-recorded from the next CI run, as in ADR-0021 and ADR-0036. The middle step is larger than its code suggests; FND-016 tracks finding out why (the cookie stack is the main suspect) before Phase 4 adds a script engine.
 
+## ADR-0043: License checks cover the release targets; one MPL-2.0 exception (2026-10-19)
+**Context.** With wry, `cargo deny` rejected MPL-2.0 crates. Most (`cssparser`, `selectors`, `dom_query`) are wry dependencies for Android only, which Ferry never builds: cargo-deny checked every platform. One, `option-ext` (via wry -> `dirs`), is in the Windows, macOS and Linux binaries.
+**Decision.** `deny.toml` checks the four release targets from `release.yml`. `option-ext` is allowed MPL-2.0 as a named exception; MPL-2.0 as a whole stays off the allow list, so any new MPL-2.0 crate is a decision of its own. The unused `CDLA-Permissive-2.0` allowance is removed.
+**Consequences.** MPL-2.0 is file-level copyleft: Ferry uses `option-ext` unmodified, and its source stays available on crates.io, so Ferry's own code stays Apache-2.0. A release target added to `release.yml` must be added to `deny.toml` too.
+
 ---
 
 ## v2 candidates

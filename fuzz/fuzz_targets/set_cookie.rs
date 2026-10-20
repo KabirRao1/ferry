@@ -21,8 +21,13 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(cookie) = parse_set_cookie(header, host, path, NOW) {
         assert!(!cookie.name.is_empty());
         assert!(cookie.path.starts_with('/'), "{cookie:?}");
-        assert!(!cookie.domain.starts_with('.'), "{cookie:?}");
-        assert_eq!(cookie.domain, cookie.domain.to_ascii_lowercase());
+        if cookie.host_only {
+            // The request's own host, whatever it is.
+            assert_eq!(cookie.domain, host.to_ascii_lowercase(), "{cookie:?}");
+        } else {
+            assert!(!cookie.domain.starts_with('.'), "{cookie:?}");
+            assert_eq!(cookie.domain, cookie.domain.to_ascii_lowercase());
+        }
     }
     let mut jar = Jar::default();
     let _ = jar.store(header, host, path, NOW);

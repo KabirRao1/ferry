@@ -1141,3 +1141,248 @@ fn f08_ac10_local_overrides_stay_local_across_saves() {
         h.update(Message::Save);
     }
 }
+
+// --- F32-AC3 example tabs --------------------------------------------------------------
+
+/// `HEALTH` with a JSON example and a binary one.
+fn with_examples(fs: &MemFs) {
+    sample(fs);
+    let example = |name: &str, status: u16, body: &[u8]| ferry_app::Example {
+        name: name.into(),
+        request: RequestDraft {
+            url: "{{base}}/health".into(),
+            ..RequestDraft::default()
+        },
+        status,
+        headers: vec![ferry_app::Header {
+            name: "Content-Type".into(),
+            value: "application/json".into(),
+        }],
+        body: ferry_app::Bytes::copy_from_slice(body),
+    };
+    let file = collection::RequestFile {
+        name: "Health".into(),
+        request: RequestDraft {
+            url: "{{base}}/health".into(),
+            ..RequestDraft::default()
+        },
+        examples: vec![
+            example("OK", 200, br#"{"ok": true}"#),
+            example("Binary", 200, &[0, 159, 146, 150, 255]),
+        ],
+    };
+    fs.put(root().join(HEALTH), collection::write_request(&file));
+}
+
+fn example_doc(h: &H) -> ferry_app::ExampleDoc {
+    match &h.app.tab().doc {
+        Doc::Example(e) => (**e).clone(),
+        other => panic!("{other:?}"),
+    }
+}
+
+fn saved_examples(h: &H) -> Vec<ferry_app::Example> {
+    collection::parse_request(&h.text(HEALTH).unwrap(), "x")
+        .unwrap()
+        .examples
+}
+
+#[test]
+fn f32_ac3_examples_open_in_a_tab_once() {
+    let mut h = H::with(with_examples);
+    let tabs = h.app.tabs().len();
+    h.update(Message::OpenExample(HEALTH.into(), 0));
+    let e = example_doc(&h);
+    assert_eq!((e.path.as_str(), e.index), (HEALTH, 0));
+    assert_eq!(e.draft.name, "OK");
+    assert_eq!(e.draft.status, "200");
+    assert_eq!(e.draft.headers[0].key, "Content-Type");
+    assert_eq!(e.draft.body, r#"{"ok": true}"#);
+    assert_eq!(e.draft.raw_body, None, "text bodies are edited as text");
+    assert_eq!(e.request.url, "{{base}}/health");
+    assert_eq!(h.app.tab().title(), "OK");
+    assert!(!h.app.tab().is_dirty());
+    assert_eq!(h.app.tabs().len(), tabs + 1);
+    // Again: the same tab. A missing example opens nothing.
+    h.update(Message::OpenExample(HEALTH.into(), 0));
+    h.update(Message::OpenExample(HEALTH.into(), 9));
+    h.update(Message::OpenExample("collections/api/none.toml".into(), 0));
+    assert_eq!(h.app.tabs().len(), tabs + 1);
+}
+
+#[test]
+fn f32_ac3_editing_and_saving_an_example() {
+    let mut h = H::with(with_examples);
+    h.update(Message::OpenExample(HEALTH.into(), 0));
+    h.edit(Edit::ExampleName("Healthy".into()));
+    h.edit(Edit::ExampleStatus(" 201 ".into()));
+    h.edit(Edit::ExampleBody("{}".into()));
+    h.edit(Edit::Row(
+        Table::ExampleHeaders,
+        1,
+        RowEdit::Key(" X-Id ".into()),
+    ));
+    h.edit(Edit::Row(
+        Table::ExampleHeaders,
+        1,
+        RowEdit::Value("7".into()),
+    ));
+    h.edit(Edit::Row(Table::ExampleHeaders, 0, RowEdit::Enabled(false)));
+    // Edits that do not belong to examples change nothing.
+    h.edit(Edit::Url("ignored".into()));
+    h.edit(Edit::Description("ignored".into()));
+    assert!(h.app.tab().is_dirty());
+    assert_eq!(h.app.tab().title(), "Healthy");
+    h.update(Message::Save);
+    let examples = saved_examples(&h);
+    assert_eq!(examples[0].name, "Healthy");
+    assert_eq!(examples[0].status, 201);
+    assert_eq!(&examples[0].body[..], b"{}");
+    assert_eq!(
+        examples[0]
+            .headers
+            .iter()
+            .map(|x| (x.name.as_str(), x.value.as_str()))
+            .collect::<Vec<_>>(),
+        [("X-Id", "7")],
+        "disabled rows are left out and names trimmed"
+    );
+    assert_eq!(examples[0].request.url, "{{base}}/health");
+    assert_eq!(examples[1].name, "Binary", "the other example is untouched");
+    // The tab now shows what was saved (FND-019).
+    assert!(!h.app.tab().is_dirty());
+    let e = example_doc(&h);
+    assert_eq!(e.draft.headers.len(), 1);
+    assert_eq!(e.draft.headers[0].key, "X-Id");
+    assert_eq!(e.body_revision, 0, "the body editor keeps its text");
+}
+
+#[test]
+fn f32_ac3_invalid_status_codes_are_refused() {
+    let mut h = H::with(with_examples);
+    h.update(Message::OpenExample(HEALTH.into(), 0));
+    let before = h.text(HEALTH);
+    for status in ["", "abc", "99", "600", "70000"] {
+        h.edit(Edit::ExampleStatus(status.into()));
+        h.update(Message::Save);
+        assert_eq!(
+            example_doc(&h).error.as_deref(),
+            Some("Enter a status code from 100 to 599"),
+            "{status:?}"
+        );
+        assert_eq!(h.text(HEALTH), before, "{status:?}");
+        assert!(h.app.tab().is_dirty());
+    }
+    for status in ["100", "599"] {
+        h.edit(Edit::ExampleStatus(status.into()));
+        h.update(Message::Save);
+        assert_eq!(example_doc(&h).error, None, "{status}");
+        assert_eq!(saved_examples(&h)[0].status.to_string(), status);
+    }
+}
+
+#[test]
+fn f32_ac3_binary_bodies_survive_saving_other_fields() {
+    let mut h = H::with(with_examples);
+    h.update(Message::OpenExample(HEALTH.into(), 1));
+    let e = example_doc(&h);
+    assert_eq!(
+        e.draft.body,
+        String::from_utf8_lossy(&[0, 159, 146, 150, 255])
+    );
+    assert!(e.draft.raw_body.is_some());
+    h.edit(Edit::ExampleName("Bytes".into()));
+    h.update(Message::Save);
+    assert_eq!(&saved_examples(&h)[1].body[..], [0, 159, 146, 150, 255]);
+    // Editing the body replaces the bytes with the text.
+    h.edit(Edit::ExampleBody("text".into()));
+    assert_eq!(example_doc(&h).draft.raw_body, None);
+    h.update(Message::Save);
+    assert_eq!(&saved_examples(&h)[1].body[..], b"text");
+}
+
+#[test]
+fn f32_ac3_example_tabs_follow_their_file() {
+    let mut h = H::with(with_examples);
+    h.update(Message::OpenExample(HEALTH.into(), 0));
+    let clean = h.app.tab().id;
+    h.update(Message::OpenExample(HEALTH.into(), 1));
+    h.edit(Edit::ExampleName("Mine".into()));
+    // Another program renames both examples.
+    let mut file = collection::parse_request(&h.text(HEALTH).unwrap(), "x").unwrap();
+    file.examples[0].name = "OK v2".into();
+    file.examples[0].body = "{}".into();
+    file.examples[1].name = "Binary v2".into();
+    h.put(HEALTH, &collection::write_request(&file));
+    h.reload();
+    let tab = h.app.tabs().iter().find(|t| t.id == clean).unwrap();
+    assert_eq!(tab.title(), "OK v2", "a clean tab reloads");
+    assert!(!tab.is_dirty());
+    match &tab.doc {
+        Doc::Example(e) => assert_eq!(e.body_revision, 1, "its editor reloads"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(h.app.tab().title(), "Mine", "a dirty tab keeps its edits");
+    assert!(h.app.tab().is_dirty());
+    // When the example goes away, its tab closes.
+    file.examples.truncate(1);
+    h.put(HEALTH, &collection::write_request(&file));
+    h.reload();
+    assert!(
+        h.app
+            .tabs()
+            .iter()
+            .all(|t| !matches!(&t.doc, Doc::Example(e) if e.index == 1))
+    );
+}
+
+#[test]
+fn f32_ac3_deleting_an_example_closes_its_tab_and_shifts_later_ones() {
+    let mut h = H::with(with_examples);
+    h.update(Message::OpenExample(HEALTH.into(), 0));
+    h.update(Message::OpenExample(HEALTH.into(), 1));
+    h.update(Message::Delete(Target::Example(HEALTH.into(), 0)));
+    assert!(h.app.dialog().is_some(), "deleting asks first");
+    h.update(Message::DialogConfirm);
+    let examples = saved_examples(&h);
+    assert_eq!(examples.len(), 1);
+    assert_eq!(examples[0].name, "Binary");
+    let open: Vec<_> = h
+        .app
+        .tabs()
+        .iter()
+        .filter_map(|t| match &t.doc {
+            Doc::Example(e) => Some((e.index, e.draft.name.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(open, [(0, "Binary".to_owned())]);
+}
+
+#[test]
+fn f09_ac11_every_auth_field_edits_the_settings() {
+    let mut h = H::with(sample);
+    h.update(Message::OpenItem("collections/api".into()));
+    h.edit(Edit::AuthKind(AuthKind::ApiKey));
+    h.edit(Edit::Password("p".into()));
+    h.edit(Edit::Token("t".into()));
+    h.edit(Edit::ApiKey("k".into()));
+    h.edit(Edit::ApiValue("v".into()));
+    // Not a settings edit.
+    h.edit(Edit::ExampleName("ignored".into()));
+    match &h.app.tab().doc {
+        Doc::Container(c) => {
+            let a = &c.draft.auth;
+            assert_eq!(
+                (
+                    a.password.as_str(),
+                    a.token.as_str(),
+                    a.key.as_str(),
+                    a.value.as_str()
+                ),
+                ("p", "t", "k", "v")
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+}
