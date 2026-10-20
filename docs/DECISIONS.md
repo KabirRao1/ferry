@@ -207,6 +207,31 @@ The Windows release binary grew from 8.95 MB to 12.73 MB (+42%), past the 10% re
 ## ADR-0048: Binary-size re-baseline for Phase 4 (2026-10-20)
 The Windows release binary grew from 12.73 MB to 15.23 MB (+20%), past the 10% guard: scripts with QuickJS +1.57 MB (14.30 MB in CI run 39369478191), then the Collection Runner, data files and Visualize with `handlebars` +0.93 MB. The growth is the Phase 4 scope (ADR-0044, ADR-0046). The Windows baseline is re-recorded (2026-10-20: 15.23 MB; idle RSS with 10 tabs 1.27x the empty window; cold start 75 ms; scroll p95 3.39 ms), and the Linux and macOS baselines are cleared and re-recorded from the next CI run, as in ADR-0042. `ferry-cli` is not measured; it ships beside `ferry`.
 
+## ADR-0049: settings.toml arrives with network settings (2026-10-20)
+**Context.** F21 needs settings that outlive a session (proxy, certificates, timeouts) before F12 brings the rest of Settings in Phase 7.
+**Decision.** `settings.toml` in the data directory, written atomically and restored like the session (an unreadable file moves to `.bak`). Phase 5 fills only `[network]`; F12 adds sections. Passwords and passphrases in it are references to vault entries (F31), never values.
+**Consequences.** Settings are per machine, not per workspace, as in Postman. F12 will not need a migration.
+
+## ADR-0050: The vault uses the OS credential store through `keyring` (2026-10-20)
+**Context.** F31 stores secrets that must never reach a file Ferry writes.
+**Decision.** Values live in the OS credential store via the `keyring` crate (Windows Credential Manager, macOS Keychain, Secret Service), service `Ferry`, one entry per name. `vault.toml` in the data directory lists the names only, because credential stores cannot be listed portably. The store is behind a trait so tests use an in-memory store and never touch the user's keychain.
+**Consequences.** Secrets follow the OS account and its protections. On a Linux machine without Secret Service the vault is unavailable and says so (F31-AC5).
+
+## ADR-0051: OAuth 2.0 uses the system browser and a loopback redirect (2026-10-20)
+**Context.** The authorization code and implicit grants need a user to sign in on the provider's page and the redirect to reach Ferry. Postman uses an embedded browser or its own callback domain.
+**Decision.** Ferry opens the authorization URL in the system browser and listens on `127.0.0.1` on a free port (or the port of a loopback callback URL the user set) for one request to the callback path, as RFC 8252 recommends for native apps. PKCE is on by default. Tokens are kept in `oauth2-tokens.toml` in the data directory, keyed by token name, with their expiry and refresh token; access and refresh tokens themselves go to the vault when it is available.
+**Consequences.** The user signs in with the browser they already use (password managers, SSO). Providers that refuse loopback redirects need a callback URL the user controls. Opening the browser is a user action (`Get New Access Token`) and never happens in tests.
+
+## ADR-0052: Signing with `ring`, plus MD4/MD5 for the old schemes (2026-10-20)
+**Context.** F20 needs HMAC, SHA-1/2, RSA, ECDSA, MD5 (Digest) and MD4 with HMAC-MD5 (NTLM).
+**Decision.** `ring`, already in the tree through rustls, does HMAC, digests, RSA PKCS#1 v1.5 and PSS, and fixed-size ECDSA P-256/P-384. The small RustCrypto crates `md-5`, `md4` and `hmac` cover MD5 and NTLM. The `rsa` crate is not used: it carries an unfixed timing advisory (RUSTSEC-2023-0071) and is not needed. Because `ring` cannot sign RSA with SHA-1, OAuth 1.0 offers RSA-SHA256 and RSA-SHA512 but not RSA-SHA1. Signing code is pure and lives in `ferry-core::auth`, with time and nonces passed in.
+**Consequences.** One new heavy dependency is avoided. OAuth 1.0 servers that insist on RSA-SHA1 are not supported; HMAC-SHA1 still is.
+
+## ADR-0053: Importers are pure functions over parsed documents (2026-10-20)
+**Context.** F11 and F30 read Postman, OpenAPI, Swagger, HAR and cURL.
+**Decision.** Each importer in `ferry-core::import` turns text into a `Collection` (files to write) and a list of what was skipped; the app writes it with the usual workspace `Op`s. YAML is read with `yaml-rust2` into the same JSON value model, so importers only handle JSON values. Exporting to Postman is the inverse of importing, and round-trip tests hold the two together.
+**Consequences.** Importers are fuzzable and need no I/O. Large specs load in one pass.
+
 ---
 
 ## v2 candidates

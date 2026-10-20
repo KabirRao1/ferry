@@ -194,6 +194,17 @@ Scope: last N requests (default 100), searchable, one-click replay. Stored in th
 ## F11 Import/export
 Scope: curl import and export; Postman Collection v2.1 import (documented subset).
 
+Import also covers Postman environments; OpenAPI and HAR import are F30. Export is Postman Collection v2.1 and Postman environments; cURL export is F19.
+
+| AC | Criterion |
+|---|---|
+| F11-AC1 | **When** the user pastes text starting with `curl ` into the URL field, **then** the tab's request becomes that command: method (`-X`/`--request`, or POST when there is data and no `-X`, or HEAD with `-I`), URL (the first argument that is not an option, or `--url`), headers (`-H`), cookies (`-b name=value` as a `Cookie` header), body (`-d`, `--data`, `--data-raw`, `--data-binary` as raw, or as x-www-form-urlencoded when every piece is `name=value`; `--data-urlencode`; `-F name=value` and `-F name=@file` as form-data; `--json` as raw JSON), Basic auth (`-u user:password`), `-k`/`--insecure` (verification off), `-L` (follow redirects; without it redirects are not followed) and `-G` (data into the query). Single quotes, double quotes, `$'…'`, backslash and caret line continuations are understood. Other options are ignored. Text that does not parse shows `Could not read the cURL command: <reason>` and leaves the request as it was. |
+| F11-AC2 | **When** the user presses Import in the sidebar header, **then** a dialog offers `Choose File…` (a JSON or YAML file) and a text box for pasted text (a cURL command, or file contents). Ferry detects the format: Postman Collection v2.0 or v2.1, Postman environment, OpenAPI 3.x, Swagger 2.0 (F30), HAR (F30) or cURL. Anything else shows `Ferry cannot import this: it is not a Postman collection or environment, OpenAPI, Swagger, HAR or cURL command`. |
+| F11-AC3 | **Given** a Postman collection, **then** importing creates a new collection in the workspace (named after it, made unique as F09-AC8 does) with its description, variables, auth, pre-request and test scripts (`exec` lines joined), folders and requests in order, each request with method, URL, params, headers (disabled ones kept), body (raw with its language, urlencoded, form-data with text and file fields, binary file, GraphQL as raw JSON), auth, description, scripts and saved responses as examples. Auth types Ferry has map one to one; others become `No Auth`. |
+| F11-AC4 | **Given** an import, **then** it ends with a summary: `Imported <collection>: <n> requests in <m> folders`, followed by each thing that was not carried over (for example `GET Login: auth type "ntlm" is not supported, set to No Auth`). Nothing is written if the file cannot be read as a whole. |
+| F11-AC5 | **Given** a Postman environment, **then** importing creates an environment (unique name) with its values, enabled flags, and `secret` type values marked Secret (so their values go to the local file, F08-AC10). |
+| F11-AC6 | **When** the user chooses `Export…` on a collection (its `…` menu), **then** a save dialog writes a Postman Collection v2.1 file with everything F11-AC3 imports, and importing that file into Ferry gives back an equal collection. Environments export the same way as Postman environments; secret values are exported empty. |
+
 ## F12 Settings
 Scope: theme, font size, default timeout.
 
@@ -271,11 +282,40 @@ Scope: a log of every request as sent (after variables and scripts) and every re
 ## F19 Code snippets
 Scope: generate code for the current request: cURL, HTTPie, Python requests, JavaScript fetch, Node axios, Go, Rust reqwest, Java, C#, PHP, Ruby, Swift. Pure functions in `ferry-core`.
 
+| AC | Criterion |
+|---|---|
+| F19-AC1 | **When** the user presses `</>` (Code) beside the request tabs, **then** a panel shows the request as code in the chosen language (cURL by default, the choice remembered), updated as the request changes, with `Copy`. Variables are resolved as for sending (F08-AC3); unresolved ones stay as `{{name}}`. |
+| F19-AC2 | **Given** a request, **then** each generator produces code that sends the same method, URL, headers (the user's enabled headers, the auth header, and `Content-Type` from the body), and body: raw text, urlencoded fields, form-data text and file fields, or a binary file. The languages are cURL, HTTPie, Python `requests`, JavaScript `fetch`, Node.js `axios`, Go `net/http`, Rust `reqwest`, Java `HttpClient`, C# `HttpClient`, PHP cURL, Ruby `Net::HTTP` and Swift `URLSession`. Strings are escaped for each language, so any header or body text survives. |
+| F19-AC3 | **Given** cURL output, **then** it is one argument per line joined with ` \`, single-quoted for POSIX shells (`'` written as `'\''`), with `--location` when redirects are followed and `--insecure` when verification is off; F11-AC1 reads it back as the same request. |
+
 ## F20 Advanced auth
 Scope: Digest, JWT Bearer, AWS Signature v4, Hawk, NTLM, Akamai EdgeGrid, ASAP, OAuth 1.0, OAuth 2.0 (authorization code with PKCE, implicit, password, client credentials; token storage and refresh; system-browser loopback redirect).
 
+| AC | Criterion |
+|---|---|
+| F20-AC1 | **Given** the Authorization tab, **then** the types are Inherit, No Auth, Basic, Bearer, JWT Bearer, Digest, OAuth 1.0, OAuth 2.0, Hawk, AWS Signature, NTLM, Akamai EdgeGrid, ASAP and API Key, each with its fields; every field takes variables (F08-AC3), and auth is saved in request, folder and collection files (F09-AC2). |
+| F20-AC2 | **Given** Digest auth, **when** the server answers 401 with `WWW-Authenticate: Digest`, **then** Ferry sends the request again once with an `Authorization: Digest` header as RFC 7616 describes (MD5, MD5-sess, SHA-256 and SHA-256-sess; `qop=auth`; a fresh client nonce), and the response shown is the second one. Without such a challenge the first response is shown. |
+| F20-AC3 | **Given** JWT Bearer, **then** Ferry signs the payload (JSON, `iat` added unless present) with HS256/384/512 and a secret (optionally base64), or RS256/384/512, PS256/384/512 or ES256/384 with a PEM private key, adds the header fields given, and sends `Authorization: <prefix> <jwt>` (prefix `Bearer` by default) or puts it in a query parameter. An invalid key or payload shows `JWT: <reason>` and nothing is sent. |
+| F20-AC4 | **Given** AWS Signature, **then** the request is signed with Signature Version 4 (access key, secret key, region, service, optional session token) in the `Authorization` header with `X-Amz-Date` and `X-Amz-Content-Sha256`, or in the query string, so that AWS's published test vectors produce their expected signatures. |
+| F20-AC5 | **Given** OAuth 1.0, **then** the request carries an RFC 5849 signature (HMAC-SHA1, HMAC-SHA256, HMAC-SHA512, RSA-SHA256 or RSA-SHA512 with a PEM key, or PLAINTEXT; RSA-SHA1 is not offered, ADR-0052) over the method, URL, query and urlencoded body, with consumer key and secret, token and secret, and optional callback, verifier, realm, nonce and timestamp, placed in the `Authorization` header, the query or the body. |
+| F20-AC6 | **Given** Hawk, Akamai EdgeGrid or ASAP, **then** the request carries the header each scheme defines (Hawk: id, key, SHA-256 or SHA-1 MAC with optional payload hash, ext and app; EdgeGrid: client token, client secret, access token, signed headers and body hash; ASAP: issuer, subject, audience, key id, RS256 private key, expiry), matching the schemes' reference examples. |
+| F20-AC7 | **Given** NTLM, **then** Ferry performs the NTLMv2 handshake (negotiate, challenge, authenticate) over one HTTP/1.1 connection with the username, password, optional domain and workstation, and shows the final response. |
+| F20-AC8 | **Given** OAuth 2.0, **when** the user presses `Get New Access Token`, **then** Ferry gets a token with the chosen grant: authorization code (with PKCE S256 or plain, optional), implicit, password credentials or client credentials. Authorization code and implicit open the authorization URL in the system browser and receive the redirect on a loopback address (`http://127.0.0.1:<port>/callback` unless a callback URL is set); the browser page then says `Ferry received the authorization. You can close this tab.` Client authentication is in the body or a Basic header. Errors show `OAuth 2.0: <error>: <description>`. |
+| F20-AC9 | **Given** an OAuth 2.0 token, **then** it is stored in the data directory (never in workspace files), listed by name with its expiry, used as `Authorization: Bearer <token>` (or the chosen prefix, or a query parameter) on sends, and, when it has expired and has a refresh token, refreshed before the send. The user can delete tokens. |
+
 ## F21 Network settings
 Scope: HTTP version choice, proxy (system, custom, bypass list), client certificates per host, custom CA certificates, TLS version limits.
+
+Network settings live in `settings.toml` in the data directory (ADR-0049) and are edited in Settings > Network until F12 brings the rest of Settings.
+
+| AC | Criterion |
+|---|---|
+| F21-AC1 | **Given** Settings > Network, **then** the request timeout (seconds, 0 for none, default 30; F05-AC3) and maximum redirects (default 10) can be changed, and apply to the next send. |
+| F21-AC2 | **Given** a request's Settings tab, **then** `HTTP version` is `Auto` (HTTP/2 when the server offers it) or `HTTP/1.1`, saved with the request. |
+| F21-AC3 | **Given** proxy settings, **then** the proxy is `None`, `System` (the OS settings and `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`) or `Custom` (an `http://`, `https://` or `socks5://` URL with optional username and password) with a bypass list of hosts (`*.example.com`, `localhost`, IP addresses); requests to bypassed hosts go direct. |
+| F21-AC4 | **Given** client certificates, **then** each has a host (with optional port, `*` wildcards allowed) and either a PFX/P12 file with passphrase or a PEM certificate and key; a request to a matching host presents it. A file that cannot be read shows `Client certificate for <host>: <reason>` on send. |
+| F21-AC5 | **Given** CA certificates, **then** a PEM file of extra trusted certificates can be added to the system's roots, and a minimum and maximum TLS version (1.2 or 1.3) can be set. |
+| F21-AC6 | **Given** settings, **then** they are saved atomically to `settings.toml` and restored on start; an unreadable file is renamed to `settings.toml.bak` and defaults are used. Passwords and passphrases are kept in the vault (F31), not in the file. |
 
 ## F22 Response Preview and Visualize
 Scope: Preview renders HTML, images, audio and video; Visualize renders HTML templates set by scripts (`pm.visualizer.set`). Both use an embedded system web view created on demand (ADR-0028). Also a JSONPath filter for JSON and XPath for XML and HTML, and body views for XML, HTML, YAML, JavaScript, Markdown and Base64.
@@ -314,8 +354,22 @@ Scope: generate HTML and Markdown documentation from a collection.
 ## F30 OpenAPI and HAR
 Scope: import OpenAPI 3, Swagger 2 and HAR into collections. Later: an OpenAPI editor with linting.
 
+| AC | Criterion |
+|---|---|
+| F30-AC1 | **Given** an OpenAPI 3.0 or 3.1 document (JSON or YAML) in the Import dialog (F11-AC2), **then** a collection named after `info.title` is created with a folder per tag (operations without tags at the top level), a request per operation named by its `summary` (else `operationId`, else `METHOD path`), URL `{{baseUrl}}` plus the path with `{name}` written as `{{name}}`, query parameters and headers from its parameters (with their examples), a JSON body generated from the request body's example or schema, and a `baseUrl` collection variable from the first server. Local `$ref`s are followed; others are skipped and listed in the summary (F11-AC4). |
+| F30-AC2 | **Given** a Swagger 2.0 document, **then** it is imported the same way, with `baseUrl` from `schemes`, `host` and `basePath`, and body parameters as the body. |
+| F30-AC3 | **Given** a HAR 1.2 file, **then** a collection named `HAR import` (made unique) gets one request per entry in order: method, URL, headers (without HTTP/2 pseudo-headers and `Content-Length`), and body (`postData.text`, or `postData.params` as urlencoded or form-data), with the recorded response saved as an example. |
+
 ## F31 Vault
 Scope: secrets stored in the OS keychain, referenced as `{{vault:name}}`, never written to collection files or exports.
+
+| AC | Criterion |
+|---|---|
+| F31-AC1 | **Given** the Vault (sidebar), **then** the user can add, edit and delete secrets by name; values are masked until shown. Secrets are stored in the OS credential store (Windows Credential Manager, macOS Keychain, Secret Service on Linux) under the service `Ferry`, and only their names are listed in `vault.toml` in the data directory. |
+| F31-AC2 | **Given** `{{vault:name}}` in a request, **then** it resolves to that secret when sending (F08-AC3), after the other scopes; an unknown name is unresolved (F08-AC5). Variable strips and hovers show it masked. |
+| F31-AC3 | **Given** scripts, **then** `pm.vault.get(name)`, `pm.vault.set(name, value)` and `pm.vault.unset(name)` read and write the vault. |
+| F31-AC4 | **Given** any file Ferry writes (workspace files, history, session, exports, run reports), **then** no vault value appears in it: history and the console show the value as `{{vault:name}}`. |
+| F31-AC5 | **Given** a system with no credential store available, **then** the Vault says `The system keychain is not available, so the vault cannot be used here` and `{{vault:…}}` references stay unresolved. |
 
 ## F32 Saved examples
 Scope: save a response as a named example of its request; view and edit examples.

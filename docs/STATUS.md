@@ -1,6 +1,6 @@
 # Status
 
-**Phase:** 4 complete locally (user asked 2026-10-19 to build the remaining phases); next is Phase 5.
+**Phase:** 5 in progress (user asked 2026-10-19 to build the remaining phases). Phase 4 pushed in 150afdf.
 
 ## Phase 3 progress (resume here)
 - Phase 3 complete: CI run 39364317363 (c2b6ed3) green on Linux, macOS and Windows, fuzz smoke included. Linux and macOS budget baselines recorded from it (binary 15.09 MB and 10.10 MB; idle RSS 1.64x and 1.06x; macOS scroll p95 15.47 ms, FND-008).
