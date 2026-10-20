@@ -7,9 +7,9 @@ use ferry_core::auth::{ApiKeyLocation, AuthDraft, AuthKind};
 use ferry_core::body::{BodyDraft, BodyMode, FormField, RawLanguage};
 use ferry_core::collection::{
     AuthSource, CollectionFile, Example, FolderFile, Item, ItemKind, Node, RequestFile, ancestors,
-    arrange, collection_variables, file_name, find, inherit_note, inherited_auth, parent,
-    parse_collection, parse_folder, parse_order, parse_request, search, write_collection,
-    write_folder, write_order, write_request,
+    arrange, collection_variables, file_name, find, inherit_note, inherited_auth,
+    merge_collection_local, parent, parse_collection, parse_folder, parse_order, parse_request,
+    search, write_collection, write_collection_local, write_folder, write_order, write_request,
 };
 use ferry_core::draft::RequestDraft;
 use ferry_core::environment::{self, VariablesFile};
@@ -18,6 +18,7 @@ use ferry_core::names::{MAX_NAME_CHARS, item_file, sanitize, unique};
 use ferry_core::params::Param;
 use ferry_core::request::{Method, SendOptions};
 use ferry_core::response::Header;
+use ferry_core::scripts::{Phase, Scripts};
 use ferry_core::variables::{Origin, Variable};
 use proptest::prelude::*;
 
@@ -162,6 +163,7 @@ fn rich_request() -> RequestFile {
             follow_redirects: false,
             ..SendOptions::default()
         },
+        scripts: Scripts::default(),
     };
     request.body.form = vec![FormField {
         row: KeyValue::new("file", ""),
@@ -410,6 +412,7 @@ fn f09_ac2_collection_file_round_trip_and_format() {
             ..AuthDraft::default()
         },
         variables: vec![Variable::new("base", "https://pay.test")],
+        scripts: Scripts::default(),
     };
     let text = write_collection(&file);
     insta::assert_snapshot!("f09_ac2_collection_file", text);
@@ -619,6 +622,7 @@ fn folder(path: &str, name: &str, auth: AuthDraft, items: Vec<Item>) -> Item {
             name: name.into(),
             description: String::new(),
             auth,
+            scripts: Scripts::default(),
         }),
         items,
     }
@@ -881,4 +885,136 @@ fn f09_ac13_search_by_name_or_url() {
     assert_eq!(search(&t, "ping").len(), 1);
     assert!(search(&t, "").is_empty());
     assert!(search(&t, "zzz").is_empty());
+}
+
+// --- F15-AC1 scripts in item files ------------------------------------------------
+
+fn scripts() -> Scripts {
+    Scripts {
+        pre_request: "pm.environment.set(\"ts\", Date.now());\n".into(),
+        post_response: "pm.test(\"ok\", () => {\n  pm.response.to.have.status(200);\n});\n".into(),
+    }
+}
+
+#[test]
+fn f15_ac1_request_scripts_round_trip() {
+    let mut file = rich_request();
+    file.request.scripts = scripts();
+    let text = write_request(&file);
+    insta::assert_snapshot!("f15_ac1_request_scripts", text);
+    assert_eq!(parse_request(&text, "x").unwrap(), file);
+    // Empty scripts are left out; one empty script of two is too.
+    file.request.scripts = Scripts::default();
+    assert!(!write_request(&file).contains("[scripts]"));
+    file.request.scripts.pre_request = "1".into();
+    let text = write_request(&file);
+    assert!(text.contains("[scripts]\npre_request = \"1\"\n"), "{text}");
+    assert!(!text.contains("post_response"));
+}
+
+#[test]
+fn f15_ac1_collection_and_folder_scripts_round_trip() {
+    let collection = CollectionFile {
+        name: "C".into(),
+        scripts: scripts(),
+        ..CollectionFile::default()
+    };
+    let text = write_collection(&collection);
+    assert!(text.contains("[scripts]"), "{text}");
+    assert_eq!(parse_collection(&text, "x").unwrap(), collection);
+    let folder = FolderFile {
+        name: "F".into(),
+        scripts: scripts(),
+        ..FolderFile::default()
+    };
+    let text = write_folder(&folder);
+    assert_eq!(parse_folder(&text, "x").unwrap(), folder);
+}
+
+#[test]
+fn f15_ac1_scripts_by_phase() {
+    let mut s = Scripts::default();
+    assert!(s.is_blank());
+    s.set(Phase::PostResponse, " \n".into());
+    assert!(s.is_blank(), "whitespace only");
+    s.set(Phase::PreRequest, "x".into());
+    assert!(!s.is_blank());
+    assert_eq!(s.get(Phase::PreRequest), "x");
+    assert_eq!(s.get(Phase::PostResponse), " \n");
+    assert_eq!(Phase::PreRequest.event_name(), "prerequest");
+    assert_eq!(Phase::PostResponse.event_name(), "test");
+    assert_eq!(Phase::default(), Phase::PreRequest);
+}
+
+// --- F15-AC5 the collection's local file ----------------------------------------
+
+#[test]
+fn f15_ac5_collection_local_values_stay_local() {
+    let mut file = parse_collection(
+        "name = \"C\"\n[[variables]]\nkey = \"base\"\nvalue = \"https://shared.test\"\n",
+        "x",
+    )
+    .unwrap();
+    let shared_text = write_collection(&file);
+    assert_eq!(write_collection_local(&file), None);
+    environment::set_local(&mut file.variables, "base", "https://mine.test");
+    environment::set_local(&mut file.variables, "token", "abc");
+    // The shared file does not change; the local file has both values.
+    assert_eq!(write_collection(&file), shared_text);
+    let local = write_collection_local(&file).unwrap();
+    let mut back = parse_collection(&shared_text, "x").unwrap();
+    merge_collection_local(&mut back, &local).unwrap();
+    assert_eq!(back, file);
+    assert_eq!(back.variables[0].value, "https://mine.test");
+    assert_eq!(back.variables[1].key, "token");
+    assert!(merge_collection_local(&mut back, "variables = 3").is_err());
+}
+
+#[test]
+fn f15_ac5_set_and_unset_change_only_the_local_layer() {
+    let shared_text = "name = \"Dev\"\n[[variables]]\nkey = \"a\"\nvalue = \"shared\"\n[[variables]]\nkey = \"s\"\nvalue = \"\"\nsecret = true\n";
+    let mut file = environment::parse(
+        shared_text,
+        Some("[[variables]]\nkey = \"s\"\nvalue = \"hidden\"\n"),
+    )
+    .unwrap();
+    let (before, _) = environment::write(&file);
+    environment::set_local(&mut file.variables, "a", "1");
+    environment::set_local(&mut file.variables, "a", "2");
+    environment::set_local(&mut file.variables, "s", "new secret");
+    environment::set_local(&mut file.variables, "n", "new");
+    let (shared, local) = environment::write(&file);
+    assert_eq!(shared, before, "the shared file never changes");
+    let local = local.unwrap();
+    assert!(local.contains("value = \"2\""), "{local}");
+    assert!(
+        local.contains("new secret") && local.contains("key = \"n\""),
+        "{local}"
+    );
+    let reread = environment::parse(&shared, Some(&local)).unwrap();
+    assert_eq!(reread, file);
+    // Unset: the shared value comes back, a local-only variable goes.
+    environment::unset_local(&mut file.variables, "a");
+    environment::unset_local(&mut file.variables, "n");
+    environment::unset_local(&mut file.variables, "missing");
+    let a = &file.variables[0];
+    assert_eq!((a.value.as_str(), &a.origin), ("shared", &Origin::Shared));
+    assert!(file.variables.iter().all(|v| v.key != "n"));
+    // Unsetting a shared value with no local value changes nothing.
+    let unchanged = file.clone();
+    environment::unset_local(&mut file.variables, "a");
+    assert_eq!(file, unchanged);
+    // The secret keeps its local value until unset, then its empty one.
+    environment::unset_local(&mut file.variables, "s");
+    assert_eq!(file.variables[1].value, "");
+    assert_eq!(
+        environment::write(&file).1.as_deref(),
+        Some(
+            "[[variables]]
+key = \"s\"
+value = \"\"
+"
+        ),
+        "secrets always live in the local file"
+    );
 }

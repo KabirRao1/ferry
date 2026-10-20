@@ -3,7 +3,7 @@
 **Phase:** 4 in progress (user asked 2026-10-19 to build the remaining phases). Phase 3 is complete once CI is green.
 
 ## Phase 3 progress (resume here)
-- Commits 18ef86d (F08, F09), a38a041 (F10, F17, F18, F06-AC8, F22-AC4, F32-AC1) and 8e2319a (Preview, quality pass) pushed 2026-10-19. CI run 39303834027 failed on three things, fixed in the next commit: the `set_cookie` fuzz target's assertion (FND-020), cargo-deny rejecting MPL-2.0 crates (ADR-0043), and ferry-app coverage at 89.2% (now 95.8% locally, with F32-AC3 example-tab tests that found FND-019).
+- Phase 3 complete: CI run 39364317363 (c2b6ed3) green on Linux, macOS and Windows, fuzz smoke included. Linux and macOS budget baselines recorded from it (binary 15.09 MB and 10.10 MB; idle RSS 1.64x and 1.06x; macOS scroll p95 15.47 ms, FND-008).
 - User asked (2026-10-19) to build the remaining phases (4-7) for a public release; go phase by phase, each pushed green, with a short summary at each boundary.
 - 555 tests pass on Windows; clippy clean.
 - Mutation testing: the local Phase 3 run was stopped by the system for low memory after 132 of 523 core mutants (113 caught, 1 timeout, 14 unviable, 4 missed); store and app were not reached. The 4 missed (collection.rs `toml_error` line number and `restore_originals`; cookies.rs empty `SameSite` and `parse_date` minute/second check) and 8 hand-applied mutants of the FND-017 limit are all caught by new tests. The nightly covers the rest; pushes to main mutation-test nothing (their diff against origin/main is empty).

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use ferry_app::{App, Doc, Method, Tab, TabId, Table};
+use ferry_app::{App, Doc, Method, ScriptPhase, Scripts, Tab, TabId, Table};
 use iced::widget::{combo_box, text_editor};
 
 /// Editor state for one tab.
@@ -43,6 +43,45 @@ fn doc_text(tab: &Tab) -> Option<&str> {
     }
 }
 
+/// The scripts a tab edits: a request's, collection's or folder's.
+fn scripts(tab: &Tab) -> Option<&Scripts> {
+    match &tab.doc {
+        Doc::Request => Some(&tab.draft.scripts),
+        Doc::Container(c) => Some(&c.draft.scripts),
+        Doc::Environment(_) | Doc::Example(_) => None,
+    }
+}
+
+const PHASES: [ScriptPhase; 2] = [ScriptPhase::PreRequest, ScriptPhase::PostResponse];
+
+/// Keep `editor` showing `text`, reloading it if the app changed the text.
+fn follow(
+    editors: &mut HashMap<(TabId, ScriptPhase), DocEditor>,
+    key: (TabId, ScriptPhase),
+    text: &str,
+) {
+    let editor = editors.entry(key).or_insert_with(|| DocEditor {
+        content: text_editor::Content::with_text(text),
+        known: text.to_owned(),
+    });
+    if editor.known != text {
+        editor.content = text_editor::Content::with_text(text);
+        text.clone_into(&mut editor.known);
+    }
+}
+
+/// Apply `action` to `editor`, returning the new text if it was an edit.
+fn perform(editor: &mut DocEditor, action: text_editor::Action) -> Option<String> {
+    let is_edit = action.is_edit();
+    editor.content.perform(action);
+    if !is_edit {
+        return None;
+    }
+    let text = editor.content.text();
+    editor.known.clone_from(&text);
+    Some(text)
+}
+
 /// Editor state for every open tab.
 #[derive(Default)]
 pub struct Editors {
@@ -50,6 +89,8 @@ pub struct Editors {
     /// Bulk-edit text of each table in bulk mode (F02-AC4).
     bulk: HashMap<(TabId, Table), text_editor::Content>,
     docs: HashMap<TabId, DocEditor>,
+    /// Script editors (F15-AC1).
+    scripts: HashMap<(TabId, ScriptPhase), DocEditor>,
 }
 
 impl Editors {
@@ -111,6 +152,35 @@ impl Editors {
                 text.clone_into(&mut editor.known);
             }
         }
+        self.scripts.retain(|(id, _), _| {
+            app.tabs()
+                .iter()
+                .any(|t| t.id == *id && scripts(t).is_some())
+        });
+        for tab in app.tabs() {
+            if let Some(s) = scripts(tab) {
+                for phase in PHASES {
+                    follow(&mut self.scripts, (tab.id, phase), s.get(phase));
+                }
+            }
+        }
+    }
+
+    /// The editor of tab `id`'s `phase` script.
+    #[must_use]
+    pub fn script(&self, id: TabId, phase: ScriptPhase) -> Option<&text_editor::Content> {
+        self.scripts.get(&(id, phase)).map(|d| &d.content)
+    }
+
+    /// Apply an editor action to tab `id`'s `phase` script, returning the
+    /// new text if the action edited it.
+    pub fn script_action(
+        &mut self,
+        id: TabId,
+        phase: ScriptPhase,
+        action: text_editor::Action,
+    ) -> Option<String> {
+        perform(self.scripts.get_mut(&(id, phase))?, action)
     }
 
     /// The bulk-edit editor of `table` in tab `id`, if it is in bulk mode.
@@ -142,14 +212,6 @@ impl Editors {
     /// Apply an editor action to tab `id`'s multi-line field, returning the
     /// new text if the action edited it.
     pub fn doc_action(&mut self, id: TabId, action: text_editor::Action) -> Option<String> {
-        let editor = self.docs.get_mut(&id)?;
-        let is_edit = action.is_edit();
-        editor.content.perform(action);
-        if !is_edit {
-            return None;
-        }
-        let text = editor.content.text();
-        editor.known.clone_from(&text);
-        Some(text)
+        perform(self.docs.get_mut(&id)?, action)
     }
 }

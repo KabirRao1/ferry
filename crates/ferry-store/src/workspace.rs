@@ -180,6 +180,22 @@ impl<F: Fs> WorkspaceStore<F> {
             },
             Err(reason) => Node::Broken { kind, reason },
         };
+        // Values scripts set live in `collection.local.toml` (F15-AC5).
+        let node = match node {
+            Node::Collection(mut file) => {
+                let local = environment::local_path(&join(path, COLLECTION_FILE));
+                let merged = self.read_text(&local).and_then(|text| match text {
+                    Some(text) => collection::merge_collection_local(&mut file, &text)
+                        .map_err(|e| format!("{}: {e}", collection::file_name(&local))),
+                    None => Ok(()),
+                });
+                match merged {
+                    Ok(()) => Node::Collection(file),
+                    Err(reason) => Node::Broken { kind, reason },
+                }
+            }
+            other => other,
+        };
         let mut items = Vec::new();
         for entry in self.list(path) {
             let child = join(path, &entry.name);

@@ -664,3 +664,54 @@ fn f09_ac2_root_reports_the_folder() {
     let s = WorkspaceStore::new(MemFs::new(), Path::new("/somewhere"));
     assert_eq!(s.root(), Path::new("/somewhere"));
 }
+
+#[test]
+fn f15_ac5_loads_collections_with_local_values() {
+    let fs = MemFs::new();
+    put(
+        &fs,
+        "collections/api/collection.toml",
+        "name = \"API\"\n[[variables]]\nkey = \"base\"\nvalue = \"https://shared\"\n",
+    );
+    put(
+        &fs,
+        "collections/api/collection.local.toml",
+        "[[variables]]\nkey = \"base\"\nvalue = \"https://mine\"\n[[variables]]\nkey = \"token\"\nvalue = \"t\"\n",
+    );
+    // A collection without collection.toml can still have local values.
+    put(
+        &fs,
+        "collections/bare/collection.local.toml",
+        "[[variables]]\nkey = \"x\"\nvalue = \"1\"\n",
+    );
+    put(
+        &fs,
+        "collections/bad/collection.local.toml",
+        "variables = 3",
+    );
+    let ws = store(&fs).load();
+    let vars = |i: usize| match &ws.collections[i].node {
+        Node::Collection(c) => c
+            .variables
+            .iter()
+            .map(|v| (v.key.clone(), v.value.clone()))
+            .collect::<Vec<_>>(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(names(&ws.collections), ["API", "bad", "bare"]);
+    assert_eq!(
+        vars(0),
+        [
+            ("base".to_owned(), "https://mine".to_owned()),
+            ("token".to_owned(), "t".to_owned())
+        ]
+    );
+    assert!(ws.collections[0].items.is_empty(), "not a request");
+    match &ws.collections[1].node {
+        Node::Broken { reason, .. } => {
+            assert!(reason.starts_with("collection.local.toml: "), "{reason}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(vars(2), [("x".to_owned(), "1".to_owned())]);
+}

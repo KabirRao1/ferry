@@ -13,6 +13,7 @@ use ferry_core::kv::{self, KeyValue};
 use ferry_core::params::{self, Param};
 use ferry_core::request::{Method, MethodError};
 use ferry_core::response::Response;
+use ferry_core::scripts::Phase as ScriptPhase;
 use ferry_http::CancellationToken;
 
 use crate::body_view::{self, BodyView};
@@ -267,6 +268,8 @@ pub enum Edit {
     ExampleName(String),
     ExampleStatus(String),
     ExampleBody(String),
+    /// A request's, folder's or collection's script (F15-AC1).
+    Script(ScriptPhase, String),
 }
 
 // CONTRACT
@@ -280,6 +283,8 @@ pub struct Tab {
     pub phase: Phase,
     pub request_tab: RequestTab,
     pub response_tab: ResponseTab,
+    /// The script shown in the Scripts tab or section (F15-AC1).
+    pub script_phase: ScriptPhase,
     /// Text of the method field, which may be a half-typed method.
     pub method_text: String,
     pub method_error: Option<MethodError>,
@@ -312,6 +317,7 @@ impl Tab {
             phase: Phase::Idle,
             request_tab: RequestTab::default(),
             response_tab: ResponseTab::default(),
+            script_phase: ScriptPhase::default(),
             method_error: None,
             bulk: Vec::new(),
             show_auto_headers: false,
@@ -447,6 +453,7 @@ impl Tab {
             Edit::FollowRedirects(v) => d.options.follow_redirects = v,
             Edit::VerifyTls(v) => d.options.verify_tls = v,
             Edit::SendCookies(v) => d.options.cookies = v,
+            Edit::Script(phase, text) => d.scripts.set(phase, text),
             // Edits for other kinds of tab.
             Edit::Var(..)
             | Edit::Description(_)

@@ -13,6 +13,7 @@ use ferry_core::draft::RequestDraft;
 use ferry_core::history::{Entry, History};
 use ferry_core::json;
 use ferry_core::request::Request;
+use ferry_core::scripts::Phase as ScriptPhase;
 use ferry_core::session::{Session, SessionTab};
 use ferry_core::text::looks_binary;
 use ferry_core::variables::{Resolver, ScopeKind, Vars};
@@ -96,6 +97,8 @@ pub enum Message {
     CancelPressed,
     RequestTabSelected(RequestTab),
     ResponseTabSelected(ResponseTab),
+    /// Show the pre-request or post-response script (F15-AC1).
+    ScriptPhaseSelected(ScriptPhase),
     BodyFormatSelected(BodyFormat),
     Body(body_view::Message),
     /// Ask for a file for the active tab.
@@ -672,6 +675,7 @@ impl App {
             Message::CancelPressed => self.tab_mut().cancel(),
             Message::RequestTabSelected(t) => self.tab_mut().request_tab = t,
             Message::ResponseTabSelected(t) => self.tab_mut().response_tab = t,
+            Message::ScriptPhaseSelected(p) => self.tab_mut().script_phase = p,
             Message::BodyFormatSelected(f) => {
                 self.tab_mut().select_format(f);
                 // The shown text changed.

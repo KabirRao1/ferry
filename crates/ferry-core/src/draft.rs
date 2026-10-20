@@ -14,6 +14,7 @@ use crate::request::{
     Method, Part, PartValue, Request, RequestBody, SendOptions, UrlError, is_tchar, parse_url,
 };
 use crate::response::Header;
+use crate::scripts::Scripts;
 use crate::variables::{self, Resolver};
 
 /// `User-Agent` the client sends unless overridden.
@@ -40,6 +41,9 @@ pub struct RequestDraft {
     pub auth: AuthDraft,
     #[serde(skip_serializing_if = "crate::is_default")]
     pub options: SendOptions,
+    /// Saved as `[scripts]` (F15-AC1).
+    #[serde(skip_serializing_if = "crate::is_default")]
+    pub scripts: Scripts,
 }
 
 // CONTRACT

@@ -18,6 +18,7 @@ pub mod names;
 pub mod params;
 pub mod request;
 pub mod response;
+pub mod scripts;
 pub mod session;
 pub mod text;
 pub mod time;

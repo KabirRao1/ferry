@@ -10,8 +10,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use ferry_app::{
     App, AuthKind, ContainerSection, Dialog, Doc, Edit, Effect, EnvTarget, FixedAmbient, Item,
     ItemKind, KeyValue, MemFs, Message, Method, Node, Phase, RequestDraft, RowEdit, ScopeKind,
-    Session, SessionTab, Table, Target, VarEdit, VarState, Variable, Workspace, WorkspaceStore,
-    collection,
+    ScriptPhase, Session, SessionTab, Table, Target, VarEdit, VarState, Variable, Workspace,
+    WorkspaceStore, collection,
 };
 
 fn root() -> PathBuf {
@@ -1385,4 +1385,84 @@ fn f09_ac11_every_auth_field_edits_the_settings() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+// --- F15-AC1 editing scripts --------------------------------------------------------
+
+#[test]
+fn f15_ac1_request_scripts_are_edited_and_saved() {
+    let mut h = H::with(sample);
+    h.update(Message::OpenItem(HEALTH.into()));
+    assert_eq!(h.app.tab().script_phase, ScriptPhase::PreRequest);
+    h.update(Message::ScriptPhaseSelected(ScriptPhase::PostResponse));
+    assert_eq!(h.app.tab().script_phase, ScriptPhase::PostResponse);
+    h.edit(Edit::Script(ScriptPhase::PreRequest, "let a = 1;".into()));
+    h.edit(Edit::Script(
+        ScriptPhase::PostResponse,
+        "pm.test('t', () => {});".into(),
+    ));
+    assert!(h.app.tab().is_dirty());
+    h.update(Message::Save);
+    let file = collection::parse_request(&h.text(HEALTH).unwrap(), "x").unwrap();
+    assert_eq!(file.request.scripts.pre_request, "let a = 1;");
+    assert_eq!(
+        file.request.scripts.post_response,
+        "pm.test('t', () => {});"
+    );
+    assert!(!h.app.tab().is_dirty());
+}
+
+#[test]
+fn f15_ac1_collection_and_folder_scripts_are_saved() {
+    let mut h = H::with(sample);
+    h.update(Message::OpenItem("collections/api".into()));
+    h.edit(Edit::ContainerSection(ContainerSection::Scripts));
+    h.edit(Edit::Script(ScriptPhase::PreRequest, "c();".into()));
+    assert!(h.app.tab().is_dirty());
+    h.update(Message::Save);
+    let text = h.text("collections/api/collection.toml").unwrap();
+    assert!(text.contains("pre_request = \"c();\""), "{text}");
+    assert!(!h.app.tab().is_dirty());
+    h.update(Message::OpenItem("collections/api/users".into()));
+    h.edit(Edit::Script(ScriptPhase::PostResponse, "f();".into()));
+    h.update(Message::Save);
+    let text = h.text("collections/api/users/folder.toml").unwrap();
+    assert!(text.contains("post_response = \"f();\""), "{text}");
+    // Another program changes the scripts: a clean tab follows.
+    h.put(
+        "collections/api/users/folder.toml",
+        "name = \"Users\"\n[scripts]\npost_response = \"g();\"\n",
+    );
+    h.reload();
+    match &h.app.tab().doc {
+        Doc::Container(c) => assert_eq!(c.draft.scripts.post_response, "g();"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn f15_ac5_collection_settings_keep_local_values_local() {
+    let mut h = H::with(|fs| {
+        sample(fs);
+        fs.put(
+            root().join("collections/api/collection.local.toml"),
+            "[[variables]]\nkey = \"base\"\nvalue = \"https://mine.test\"\n",
+        );
+    });
+    h.update(Message::OpenItem("collections/api".into()));
+    match &h.app.tab().doc {
+        Doc::Container(c) => assert_eq!(c.draft.variables[0].value, "https://mine.test"),
+        other => panic!("{other:?}"),
+    }
+    h.edit(Edit::Description("d".into()));
+    h.update(Message::Save);
+    let shared = h.text("collections/api/collection.toml").unwrap();
+    assert!(shared.contains("https://api.test"), "{shared}");
+    assert!(!shared.contains("mine"), "{shared}");
+    let local = h.text("collections/api/collection.local.toml").unwrap();
+    assert!(local.contains("https://mine.test"), "{local}");
+    // Without local values, saving removes the local file.
+    h.edit(Edit::Var(0, VarEdit::Remove));
+    h.update(Message::Save);
+    assert!(!h.exists("collections/api/collection.local.toml"));
 }

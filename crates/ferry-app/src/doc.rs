@@ -8,6 +8,7 @@ use ferry_core::collection::{Example, ItemKind};
 use ferry_core::draft::RequestDraft;
 use ferry_core::kv::KeyValue;
 use ferry_core::response::Header;
+use ferry_core::scripts::Scripts;
 use ferry_core::variables::Variable;
 
 use crate::tab::{Edit, Table, apply_row};
@@ -85,6 +86,7 @@ pub struct ContainerFields {
     pub auth: AuthDraft,
     /// Collections only.
     pub variables: Vec<Variable>,
+    pub scripts: Scripts,
 }
 
 // CONTRACT
@@ -95,6 +97,8 @@ pub enum ContainerSection {
     Overview,
     Authorization,
     Variables,
+    /// Pre-request and post-response scripts (F15-AC1).
+    Scripts,
 }
 
 // CONTRACT
@@ -232,6 +236,7 @@ pub(crate) fn edit(doc: &mut Doc, edit: Edit) -> bool {
                 Edit::ApiKey(v) => d.auth.key = v,
                 Edit::ApiValue(v) => d.auth.value = v,
                 Edit::ApiLocation(v) => d.auth.location = v,
+                Edit::Script(phase, text) => d.scripts.set(phase, text),
                 _ => {}
             }
             c.draft != before

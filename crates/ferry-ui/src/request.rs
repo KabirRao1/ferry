@@ -14,7 +14,7 @@ use iced::widget::{
 use iced::{Alignment, Fill, Font, Length};
 
 use crate::editors::Editors;
-use crate::screen::{SMALL, TEXT, coming};
+use crate::screen::{SMALL, TEXT};
 use crate::shell::Message;
 use crate::{Element, theme};
 
@@ -48,10 +48,9 @@ pub fn view<'a>(app_state: &'a App, tab: &'a Tab, editors: &'a Editors) -> Eleme
         }
         RequestTab::Headers => headers(tab, editors),
         RequestTab::Body => body(tab, editors),
-        RequestTab::Scripts => coming(
-            "Scripts arrive in Phase 4",
-            "Pre-request and post-response JavaScript with the pm API: set variables, chain requests and write tests.",
-        ),
+        RequestTab::Scripts => {
+            crate::scripts::view(tab.id, &tab.draft.scripts, tab.script_phase, editors)
+        }
         RequestTab::Settings => settings(tab),
     };
     let mut page = column![title_row(app_state, tab), url_bar(tab, editors)].spacing(10);
@@ -218,6 +217,7 @@ pub fn tab_label(tab: &Tab, which: RequestTab) -> String {
         }
         RequestTab::Body if d.body.mode != BodyMode::None => "Body ●".into(),
         RequestTab::Body => "Body".into(),
+        RequestTab::Scripts if !d.scripts.is_blank() => "Scripts ●".into(),
         RequestTab::Scripts => "Scripts".into(),
         RequestTab::Settings => "Settings".into(),
     }

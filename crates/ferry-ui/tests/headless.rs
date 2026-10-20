@@ -231,10 +231,7 @@ fn f14_ac4_divider_drag_resizes_only_while_pressed() {
 
 #[test]
 fn f14_ac5_later_features_explain_themselves_and_do_nothing() {
-    let mut app = App::default();
-    app.update(AppMessage::RequestTabSelected(RequestTab::Scripts));
-    let shell = shell_for(app);
-    assert!(has(&shell, "Scripts arrive in Phase 4"));
+    let shell = shell_for(App::default());
     assert!(has(&shell, "No collections yet"));
     // Disabled controls emit nothing.
     for label in ["Runner", "No environment"] {
@@ -252,6 +249,35 @@ fn f14_ac5_later_features_explain_themselves_and_do_nothing() {
         ferry_app::SidebarSection::History,
     ));
     assert!(has(&shell_for(app), "No history yet"));
+}
+
+#[test]
+fn f15_ac1_scripts_tab_shows_the_selected_script() {
+    let mut app = App::default();
+    app.update(AppMessage::RequestTabSelected(RequestTab::Scripts));
+    app.update(AppMessage::Edit(Edit::Script(
+        ferry_app::ScriptPhase::PostResponse,
+        "pm.test('x', () => {});".into(),
+    )));
+    let shell = shell_for(app);
+    assert!(has(&shell, ferry_ui::scripts::PRE_REQUEST_HINT));
+    assert!(
+        has(&shell, "Scripts ●"),
+        "the tab shows that a script exists"
+    );
+    assert!(has(&shell, "Post-response ●"));
+    let got = app_messages(messages(&shell, |ui| {
+        let _ = ui.click("Post-response ●");
+    }));
+    assert!(
+        matches!(
+            got.as_slice(),
+            [AppMessage::ScriptPhaseSelected(
+                ferry_app::ScriptPhase::PostResponse
+            )]
+        ),
+        "{got:?}"
+    );
 }
 
 // --- F05 sending ------------------------------------------------------------------------

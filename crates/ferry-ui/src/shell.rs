@@ -34,6 +34,8 @@ pub enum Message {
     BulkAction(Table, text_editor::Action),
     /// An edit in the multi-line field of a collection, folder or example tab.
     DocAction(text_editor::Action),
+    /// An edit in a script editor of the active tab (F15-AC1).
+    ScriptAction(ferry_app::ScriptPhase, text_editor::Action),
     /// Something in the workspace folder changed on disk (F09-AC10).
     WorkspaceChanged,
     /// The request/response divider (F14-AC4).
@@ -190,6 +192,15 @@ impl Shell {
                         } else {
                             Task::none()
                         }
+                    }
+                    None => Task::none(),
+                }
+            }
+            Message::ScriptAction(phase, action) => {
+                let id = self.app.tab().id;
+                match self.editors.script_action(id, phase, action) {
+                    Some(text) => {
+                        self.update_app(ferry_app::Message::Edit(Edit::Script(phase, text)))
                     }
                     None => Task::none(),
                 }

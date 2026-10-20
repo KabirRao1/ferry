@@ -199,6 +199,7 @@ fn container_view<'a>(
     if c.kind == ItemKind::Collection {
         sections.push(ContainerSection::Variables);
     }
+    sections.push(ContainerSection::Scripts);
     let tabs = row(sections.into_iter().map(|s| {
         let label = match s {
             ContainerSection::Overview => "Overview".to_owned(),
@@ -207,6 +208,8 @@ fn container_view<'a>(
                 0 => "Variables".to_owned(),
                 n => format!("Variables ({n})"),
             },
+            ContainerSection::Scripts if !c.draft.scripts.is_blank() => "Scripts ●".to_owned(),
+            ContainerSection::Scripts => "Scripts".to_owned(),
         };
         column![
             button(text(label).size(TEXT))
@@ -241,13 +244,16 @@ fn container_view<'a>(
             auth_view(&c.draft.auth, note)
         }
         ContainerSection::Variables => column![
-            text("Collection variables are saved in collection.toml and apply to every request in the collection, below the active environment.")
+            text("Collection variables are saved in collection.toml and apply to every request in the collection, below the active environment. Values set by scripts go to collection.local.toml, which git ignores.")
                 .size(SMALL)
                 .style(theme::muted),
             variables(&c.draft.variables, false),
         ]
         .spacing(8)
         .into(),
+        ContainerSection::Scripts => {
+            crate::scripts::view(tab.id, &c.draft.scripts, tab.script_phase, editors)
+        }
     };
     column![
         title_bar(

@@ -155,11 +155,13 @@ fn container_fields(node: &Node) -> Option<ContainerFields> {
             description: c.description.clone(),
             auth: c.auth.clone(),
             variables: c.variables.clone(),
+            scripts: c.scripts.clone(),
         }),
         Node::Folder(f) => Some(ContainerFields {
             description: f.description.clone(),
             auth: f.auth.clone(),
             variables: Vec::new(),
+            scripts: f.scripts.clone(),
         }),
         _ => None,
     }
@@ -273,6 +275,7 @@ impl App {
                             item.name().clone_into(&mut c.name);
                             let same = c.draft.description == fields.description
                                 && c.draft.auth == fields.auth
+                                && c.draft.scripts == fields.scripts
                                 && same_rows(&c.draft.variables, &fields.variables);
                             if c.draft == c.saved || same {
                                 c.draft = fields.clone();
@@ -663,27 +666,35 @@ impl App {
                 workspace_effect(action, variables_ops(&path, &file))
             }
             Doc::Container(c) => {
-                let contents = if c.kind == ItemKind::Collection {
-                    collection::write_collection(&CollectionFile {
+                let path = settings_path(&c.path, c.kind);
+                let ops = if c.kind == ItemKind::Collection {
+                    let file = CollectionFile {
                         name: c.name.clone(),
                         description: c.draft.description.clone(),
                         auth: c.draft.auth.clone(),
                         variables: c.draft.variables.clone(),
-                    })
+                        scripts: c.draft.scripts.clone(),
+                    };
+                    let local = local_op(&path, collection::write_collection_local(&file));
+                    vec![
+                        Op::Write {
+                            path,
+                            contents: collection::write_collection(&file),
+                        },
+                        local,
+                    ]
                 } else {
-                    collection::write_folder(&FolderFile {
-                        name: c.name.clone(),
-                        description: c.draft.description.clone(),
-                        auth: c.draft.auth.clone(),
-                    })
-                };
-                workspace_effect(
-                    format!("save the {} settings", kind_noun(c.kind)),
                     vec![Op::Write {
-                        path: settings_path(&c.path, c.kind),
-                        contents,
-                    }],
-                )
+                        path,
+                        contents: collection::write_folder(&FolderFile {
+                            name: c.name.clone(),
+                            description: c.draft.description.clone(),
+                            auth: c.draft.auth.clone(),
+                            scripts: c.draft.scripts.clone(),
+                        }),
+                    }]
+                };
+                workspace_effect(format!("save the {} settings", kind_noun(c.kind)), ops)
             }
             Doc::Example(e) => {
                 let example = match e.draft.to_example(&e.request) {
@@ -1274,20 +1285,26 @@ fn same_rows(a: &[Variable], b: &[Variable]) -> bool {
 /// that is no longer needed.
 fn variables_ops(path: &str, file: &VariablesFile) -> Vec<Op> {
     let (shared, local) = environment::write(file);
-    let local_path = environment::local_path(path);
     vec![
         Op::Write {
             path: path.to_owned(),
             contents: shared,
         },
-        match local {
-            Some(contents) => Op::Write {
-                path: local_path,
-                contents,
-            },
-            None => Op::Remove(local_path),
-        },
+        local_op(path, local),
     ]
+}
+
+/// Write the local file next to the shared file at `path`, or remove it
+/// when no value belongs there.
+pub(crate) fn local_op(path: &str, local: Option<String>) -> Op {
+    let local_path = environment::local_path(path);
+    match local {
+        Some(contents) => Op::Write {
+            path: local_path,
+            contents,
+        },
+        None => Op::Remove(local_path),
+    }
 }
 
 /// `name`, or `name (2)`, `name (3)`, … if an example already has it.

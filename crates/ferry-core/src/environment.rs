@@ -60,12 +60,8 @@ struct LocalVar {
 /// [`FormatError`] if either file is not valid.
 pub fn parse(shared: &str, local: Option<&str>) -> Result<VariablesFile, FormatError> {
     let shared: SharedRepr = toml::from_str(shared).map_err(|e| toml_error(shared, &e))?;
-    let local: Vec<LocalVar> = match local {
-        Some(text) => {
-            toml::from_str::<LocalRepr>(text)
-                .map_err(|e| toml_error(text, &e))?
-                .variables
-        }
+    let local = match local {
+        Some(text) => parse_local(text)?,
         None => Vec::new(),
     };
     let mut variables: Vec<Variable> = shared
@@ -79,6 +75,22 @@ pub fn parse(shared: &str, local: Option<&str>) -> Result<VariablesFile, FormatE
             origin: Origin::Shared,
         })
         .collect();
+    apply_local(&mut variables, local);
+    Ok(VariablesFile {
+        name: shared.name,
+        variables,
+    })
+}
+
+fn parse_local(text: &str) -> Result<Vec<LocalVar>, FormatError> {
+    Ok(toml::from_str::<LocalRepr>(text)
+        .map_err(|e| toml_error(text, &e))?
+        .variables)
+}
+
+/// Local values replace shared ones by key (`Origin::Overridden`); keys
+/// only in the local file are appended (`Origin::LocalOnly`).
+fn apply_local(variables: &mut Vec<Variable>, local: Vec<LocalVar>) {
     for l in local {
         match variables
             .iter_mut()
@@ -96,10 +108,90 @@ pub fn parse(shared: &str, local: Option<&str>) -> Result<VariablesFile, FormatE
             }),
         }
     }
-    Ok(VariablesFile {
-        name: shared.name,
-        variables,
-    })
+}
+
+/// Merge a local file's text into variables read from a shared file.
+pub(crate) fn merge_local(variables: &mut Vec<Variable>, local: &str) -> Result<(), FormatError> {
+    apply_local(variables, parse_local(local)?);
+    Ok(())
+}
+
+/// The value the shared file keeps for `v`, or `None` if `v` is only in
+/// the local file.
+fn shared_value(v: &Variable) -> Option<String> {
+    match (&v.origin, v.secret) {
+        (Origin::LocalOnly, _) => None,
+        (_, true) => Some(String::new()),
+        (Origin::Overridden { shared }, false) => Some(shared.clone()),
+        (Origin::Shared, false) => Some(v.value.clone()),
+    }
+}
+
+/// The variables as the shared file stores them.
+pub(crate) fn shared_variables(variables: &[Variable]) -> Vec<Variable> {
+    variables
+        .iter()
+        .filter_map(|v| {
+            shared_value(v).map(|value| Variable {
+                value,
+                origin: Origin::Shared,
+                ..v.clone()
+            })
+        })
+        .collect()
+}
+
+/// The local file's text for `variables`, if any value belongs there.
+pub(crate) fn local_text(variables: &[Variable]) -> Option<String> {
+    let local: Vec<LocalVar> = variables
+        .iter()
+        .filter(|v| v.secret || v.origin != Origin::Shared)
+        .map(|v| LocalVar {
+            key: v.key.clone(),
+            value: v.value.clone(),
+        })
+        .collect();
+    (!local.is_empty()).then(|| to_toml(&LocalRepr { variables: local }))
+}
+
+// CONTRACT
+/// Set `key` as a script does (F15-AC5, ADR-0045): the first variable with
+/// that key gets `value` in the local layer, or a local-only variable is
+/// added. The shared file's value is kept for [`unset_local`].
+pub fn set_local(variables: &mut Vec<Variable>, key: &str, value: &str) {
+    match variables.iter_mut().find(|v| v.key == key) {
+        Some(v) => {
+            if v.origin == Origin::Shared {
+                let shared = std::mem::replace(&mut v.value, value.to_owned());
+                v.origin = Origin::Overridden { shared };
+            } else {
+                value.clone_into(&mut v.value);
+            }
+        }
+        None => variables.push(Variable {
+            key: key.to_owned(),
+            value: value.to_owned(),
+            origin: Origin::LocalOnly,
+            ..Variable::default()
+        }),
+    }
+}
+
+// CONTRACT
+/// Remove `key`'s local value as a script's `unset` does (F15-AC5): an
+/// overridden variable gets its shared value back and a local-only one
+/// goes away.
+pub fn unset_local(variables: &mut Vec<Variable>, key: &str) {
+    let Some(i) = variables.iter().position(|v| v.key == key) else {
+        return;
+    };
+    match std::mem::take(&mut variables[i].origin) {
+        Origin::Shared => {}
+        Origin::Overridden { shared } => variables[i].value = shared,
+        Origin::LocalOnly => {
+            variables.remove(i);
+        }
+    }
 }
 
 // CONTRACT
@@ -110,37 +202,20 @@ pub fn parse(shared: &str, local: Option<&str>) -> Result<VariablesFile, FormatE
 /// variable.
 #[must_use]
 pub fn write(file: &VariablesFile) -> (String, Option<String>) {
-    let mut shared = Vec::new();
-    let mut local = Vec::new();
-    for v in &file.variables {
-        let shared_value = match (&v.origin, v.secret) {
-            (Origin::LocalOnly, _) => None,
-            (_, true) => Some(String::new()),
-            (Origin::Overridden { shared }, false) => Some(shared.clone()),
-            (Origin::Shared, false) => Some(v.value.clone()),
-        };
-        let goes_local = v.secret || v.origin != Origin::Shared;
-        if let Some(value) = shared_value {
-            shared.push(VarRepr {
-                key: v.key.clone(),
-                value,
-                enabled: v.enabled,
-                secret: v.secret,
-            });
-        }
-        if goes_local {
-            local.push(LocalVar {
-                key: v.key.clone(),
-                value: v.value.clone(),
-            });
-        }
-    }
+    let shared = shared_variables(&file.variables)
+        .into_iter()
+        .map(|v| VarRepr {
+            key: v.key,
+            value: v.value,
+            enabled: v.enabled,
+            secret: v.secret,
+        })
+        .collect();
     let shared_text = to_toml(&SharedRepr {
         name: file.name.clone(),
         variables: shared,
     });
-    let local_text = (!local.is_empty()).then(|| to_toml(&LocalRepr { variables: local }));
-    (shared_text, local_text)
+    (shared_text, local_text(&file.variables))
 }
 
 /// Serialize a value whose fields are all TOML-representable.

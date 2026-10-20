@@ -14,6 +14,7 @@ pub mod probe;
 pub mod request;
 pub mod response;
 pub mod screen;
+pub mod scripts;
 pub mod shell;
 pub mod sidebar;
 pub mod theme;

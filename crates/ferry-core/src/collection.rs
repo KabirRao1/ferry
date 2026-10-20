@@ -13,9 +13,11 @@ use base64::Engine as _;
 
 use crate::auth::{AuthDraft, AuthKind};
 use crate::draft::RequestDraft;
+use crate::environment;
 use crate::environment::to_toml;
 use crate::params;
 use crate::response::Header;
+use crate::scripts::Scripts;
 use crate::variables::Variable;
 
 /// Settings file of a collection directory.
@@ -178,8 +180,11 @@ pub struct CollectionFile {
     pub description: String,
     #[serde(skip_serializing_if = "crate::is_default")]
     pub auth: AuthDraft,
+    /// With local values merged in (F15-AC5, ADR-0045).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub variables: Vec<Variable>,
+    #[serde(skip_serializing_if = "crate::is_default")]
+    pub scripts: Scripts,
 }
 
 // CONTRACT
@@ -191,6 +196,8 @@ pub struct FolderFile {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
     pub auth: AuthDraft,
+    #[serde(skip_serializing_if = "crate::is_default")]
+    pub scripts: Scripts,
 }
 
 impl Default for FolderFile {
@@ -202,6 +209,7 @@ impl Default for FolderFile {
                 kind: AuthKind::Inherit,
                 ..AuthDraft::default()
             },
+            scripts: Scripts::default(),
         }
     }
 }
@@ -260,9 +268,32 @@ pub fn parse_collection(text: &str, fallback_name: &str) -> Result<CollectionFil
 }
 
 // CONTRACT
+/// `collection.toml`'s text: variables with their shared values, and none
+/// that exist only in the local file (F15-AC5).
 #[must_use]
 pub fn write_collection(file: &CollectionFile) -> String {
-    to_toml(file)
+    let shared = CollectionFile {
+        variables: environment::shared_variables(&file.variables),
+        ..file.clone()
+    };
+    to_toml(&shared)
+}
+
+// CONTRACT
+/// `collection.local.toml`'s text, or `None` when no value belongs there
+/// (F15-AC5, ADR-0045).
+#[must_use]
+pub fn write_collection_local(file: &CollectionFile) -> Option<String> {
+    environment::local_text(&file.variables)
+}
+
+// CONTRACT
+/// Merge `collection.local.toml` into a parsed collection (F15-AC5).
+///
+/// # Errors
+/// [`FormatError`] if the local file is not valid.
+pub fn merge_collection_local(file: &mut CollectionFile, local: &str) -> Result<(), FormatError> {
+    environment::merge_local(&mut file.variables, local)
 }
 
 // CONTRACT

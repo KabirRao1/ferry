@@ -40,6 +40,7 @@ pub use ferry_core::json::JsonError;
 pub use ferry_core::kv::KeyValue;
 pub use ferry_core::request::{Method, Part, PartValue, Request, RequestBody};
 pub use ferry_core::response::{Header, Response, SetCookie, Timing};
+pub use ferry_core::scripts::{Phase as ScriptPhase, Scripts};
 pub use ferry_core::session::{Session, SessionTab};
 pub use ferry_core::text::IndexError;
 pub use ferry_core::variables::{Origin, ScopeKind, Variable};
