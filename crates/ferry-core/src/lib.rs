@@ -7,6 +7,7 @@ pub mod auth;
 pub mod body;
 pub mod collection;
 pub mod cookies;
+pub mod datafile;
 pub mod draft;
 pub mod environment;
 pub mod error;

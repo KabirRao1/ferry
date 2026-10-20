@@ -138,7 +138,7 @@ impl ScriptReport {
 /// The scripts of the containers holding `link`, collection first, and of
 /// the request itself (F15-AC2).
 #[must_use]
-pub(crate) fn chain(
+pub fn chain(
     workspace: &Workspace,
     link: Option<&str>,
     own: &ferry_core::scripts::Scripts,
@@ -175,7 +175,7 @@ pub(crate) fn chain(
 /// The variables and their files for a request linked to `link`, with the
 /// environment at `environment` selected.
 #[must_use]
-pub(crate) fn variables(
+pub fn variables(
     workspace: &Workspace,
     environment: Option<&str>,
     link: Option<&str>,

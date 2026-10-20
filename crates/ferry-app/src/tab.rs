@@ -414,6 +414,7 @@ impl Tab {
             Doc::Environment(env) => &env.name,
             Doc::Container(c) => &c.name,
             Doc::Example(e) => &e.draft.name,
+            Doc::Runner(r) => &r.name,
         }
     }
 
@@ -426,6 +427,7 @@ impl Tab {
             Doc::Environment(env) => env.draft != env.saved,
             Doc::Container(c) => c.draft != c.saved,
             Doc::Example(e) => e.draft != e.saved,
+            Doc::Runner(_) => false,
         }
     }
 
@@ -663,6 +665,11 @@ impl Tab {
     // CONTRACT
     /// Cancel the send in flight, if any.
     pub fn cancel(&mut self) {
+        if let Doc::Runner(runner) = &self.doc
+            && let Some(cancel) = &runner.cancel
+        {
+            cancel.cancel();
+        }
         if let Phase::Sending { cancel, .. } = &self.phase {
             cancel.cancel();
             self.phase = Phase::Cancelled;

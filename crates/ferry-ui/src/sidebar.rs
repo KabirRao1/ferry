@@ -255,6 +255,7 @@ fn item_menu(item: &Item, depth: u16) -> Element<'_, Message> {
             AppMessage::NewFolder(path.clone()),
         ));
         entries.push(menu_entry("Settings", AppMessage::OpenItem(path.clone())));
+        entries.push(menu_entry("Run", AppMessage::OpenRunner(path.clone())));
     }
     if !broken {
         entries.push(menu_entry("Rename", AppMessage::Rename(target())));

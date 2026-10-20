@@ -237,6 +237,29 @@ impl App {
         let mut gone = Vec::new();
         for tab in &mut self.tabs {
             match &mut tab.doc {
+                Doc::Runner(r) => {
+                    if collection::find(&ws.collections, &r.path).is_none() {
+                        gone.push(tab.id);
+                    } else if !r.running() {
+                        let checked: Vec<(String, bool)> = r
+                            .items
+                            .iter()
+                            .map(|i| (i.path.clone(), i.checked))
+                            .collect();
+                        r.items = crate::runner::requests(&ws, &r.path)
+                            .into_iter()
+                            .map(|q| crate::runner_tab::RunnerItem {
+                                checked: checked
+                                    .iter()
+                                    .find(|(p, _)| *p == q.path)
+                                    .is_none_or(|(_, on)| *on),
+                                method: q.draft.method.to_string(),
+                                path: q.path,
+                                name: q.name,
+                            })
+                            .collect();
+                    }
+                }
                 Doc::Request => {
                     let Some(link) = tab.link.clone() else {
                         continue;
@@ -624,6 +647,7 @@ impl App {
         let ws = Arc::clone(&self.workspace);
         let tab = &mut self.tabs[self.active];
         match &mut tab.doc {
+            Doc::Runner(_) => None,
             Doc::Request => {
                 let Some(link) = tab.link.clone() else {
                     let target = ws.collections.first().map(|c| c.path.clone());
@@ -965,6 +989,16 @@ impl App {
                 Doc::Example(e) => {
                     if let Some(new) = moved(&e.path, from, to) {
                         e.path = new;
+                    }
+                }
+                Doc::Runner(r) => {
+                    if let Some(new) = moved(&r.path, from, to) {
+                        r.path = new;
+                    }
+                    for item in &mut r.items {
+                        if let Some(new) = moved(&item.path, from, to) {
+                            item.path = new;
+                        }
                     }
                 }
                 Doc::Environment(env) => {

@@ -209,6 +209,8 @@ pub enum Doc {
     Environment(EnvDoc),
     Container(Box<ContainerDoc>),
     Example(Box<ExampleDoc>),
+    /// The Collection Runner (F16).
+    Runner(Box<crate::runner_tab::RunnerDoc>),
 }
 
 // CONTRACT
@@ -258,5 +260,6 @@ pub(crate) fn edit(doc: &mut Doc, edit: Edit) -> bool {
             }
             e.draft != before
         }
+        Doc::Runner(_) => false,
     }
 }

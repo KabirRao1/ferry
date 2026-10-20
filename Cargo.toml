@@ -7,6 +7,7 @@ members = [
     "crates/ferry-script",
     "crates/ferry-app",
     "crates/ferry-ui",
+    "crates/ferry-cli",
     "xtask",
 ]
 default-members = ["crates/ferry-ui"]

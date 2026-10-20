@@ -25,6 +25,7 @@ use crate::ambient::{Ambient, SystemAmbient};
 use crate::body_view::{self, BodyView};
 use crate::console::Console;
 use crate::doc::{Doc, EnvTarget};
+use crate::runner_tab::RunnerEdit;
 use crate::scripting::{ScriptReport, ScriptedSend};
 use crate::tab::{
     BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, Tab, TabId, TestFilter,
@@ -113,6 +114,32 @@ pub enum Message {
         path: Option<PathBuf>,
     },
     /// A send started by [`Effect::Send`] ended.
+    /// Open the Runner for a collection or folder (F16-AC1).
+    OpenRunner(String),
+    /// The footer's Runner: see [`App::runner_target`].
+    OpenRunnerHere,
+    RunnerEdit(RunnerEdit),
+    RunnerPickData,
+    DataFileLoaded {
+        tab: TabId,
+        path: PathBuf,
+        /// The file's text, or why it could not be read.
+        result: Result<String, String>,
+    },
+    RunStart,
+    RunStop,
+    RunSelect(usize),
+    RunExport,
+    ReportSaved {
+        tab: TabId,
+        result: Result<PathBuf, String>,
+    },
+    RunStepFinished {
+        tab: TabId,
+        generation: u64,
+        result: Arc<Finished>,
+        report: Arc<ScriptReport>,
+    },
     /// A send with scripts ended (F15).
     ScriptedFinished {
         tab: TabId,
@@ -273,6 +300,28 @@ pub enum Effect {
         send: Box<ScriptedSend>,
         cancel: CancellationToken,
         cookies: Cookies,
+    },
+    /// One step of a Collection Runner run, after `delay`; report
+    /// [`Message::RunStepFinished`] (F16-AC2).
+    RunStep {
+        tab: TabId,
+        generation: u64,
+        send: Box<ScriptedSend>,
+        delay: std::time::Duration,
+        cancel: CancellationToken,
+        cookies: Cookies,
+    },
+    /// Ask for a data file and report [`Message::DataFileLoaded`] with its
+    /// text (F16-AC3).
+    PickDataFile {
+        tab: TabId,
+    },
+    /// Ask where to save a run report and write it; report
+    /// [`Message::ReportSaved`] (F16-AC6).
+    SaveReport {
+        tab: TabId,
+        name: String,
+        contents: String,
     },
     SaveSession(Session),
     /// Show a file dialog, then report [`Message::FilePicked`].
@@ -715,6 +764,34 @@ impl App {
                     self.session_changed = true;
                 }
             }
+            Message::OpenRunner(path) => self.open_runner(&path),
+            Message::OpenRunnerHere => {
+                if let Some(path) = self.runner_target() {
+                    self.open_runner(&path);
+                }
+            }
+            Message::RunnerEdit(e) => {
+                if let Doc::Runner(doc) = &mut self.tab_mut().doc {
+                    crate::runner_tab::edit(doc, e);
+                }
+            }
+            Message::RunnerPickData => {
+                let tab = self.tab().id;
+                return matches!(self.tab().doc, Doc::Runner(_))
+                    .then_some(Effect::PickDataFile { tab });
+            }
+            Message::DataFileLoaded { tab, path, result } => self.data_loaded(tab, path, result),
+            Message::RunStart => return self.run_start(),
+            Message::RunStop => self.run_stop(),
+            Message::RunSelect(i) => self.run_select(i),
+            Message::RunExport => return self.run_export(),
+            Message::ReportSaved { tab, result } => self.report_saved(tab, result),
+            Message::RunStepFinished {
+                tab,
+                generation,
+                result,
+                report,
+            } => return self.run_step_finished(tab, generation, &result, &report),
             Message::ScriptedFinished {
                 tab,
                 id,
@@ -916,6 +993,9 @@ pub(crate) fn vars_for<'a>(
 /// the response body, and report the result as a message. Other effects
 /// return `None`; the UI runs them.
 pub async fn run(effect: Effect, client: Client) -> Option<Message> {
+    if let Effect::RunStep { .. } = effect {
+        return crate::runner_tab::run_effect(effect, client).await;
+    }
     if let Effect::ScriptedSend {
         tab,
         id,

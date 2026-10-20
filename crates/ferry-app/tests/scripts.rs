@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use ferry_app::{
     App, Client, Config, Edit, Effect, FixedAmbient, MemFs, Message, Phase, Received, RowEdit,
-    ScriptLevel, ScriptPhase, Table, TestStatus, WorkspaceStore, collection, run,
+    RunnerEdit, ScriptLevel, ScriptPhase, Table, TestStatus, WorkspaceStore, collection, run,
 };
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -21,6 +21,8 @@ struct H {
     fs: MemFs,
     store: WorkspaceStore<MemFs>,
     client: Client,
+    /// Reports `Export Results` asked to save.
+    reports: Vec<String>,
 }
 
 impl H {
@@ -40,6 +42,7 @@ impl H {
             fs,
             store,
             client: Client::new(Config::default()).unwrap(),
+            reports: Vec::new(),
         }
     }
 
@@ -64,11 +67,14 @@ impl H {
                             workspace,
                         });
                     }
-                    effect @ (Effect::Send { .. } | Effect::ScriptedSend { .. }) => {
+                    effect @ (Effect::Send { .. }
+                    | Effect::ScriptedSend { .. }
+                    | Effect::RunStep { .. }) => {
                         if let Some(m) = run(effect, self.client.clone()).await {
                             queue.push(m);
                         }
                     }
+                    Effect::SaveReport { contents, .. } => self.reports.push(contents),
                     _ => {}
                 }
             }
@@ -405,4 +411,274 @@ async fn f15_ac5_globals_and_collection_changes_go_to_local_files() {
     assert!(!shared.contains("extra"), "{shared}");
     // Unsetting a value that only the shared file has leaves no local file.
     assert_eq!(h.text("environments/dev.local.toml"), None);
+}
+
+// --- F16 the Runner tab ---------------------------------------------------------------
+
+fn runner(h: &H) -> &ferry_app::RunnerDoc {
+    match &h.app.tab().doc {
+        ferry_app::Doc::Runner(r) => r,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A collection whose two requests count their calls in `pm.variables`.
+fn counting(url: &str) -> impl FnOnce(&MemFs) {
+    let url = url.to_owned();
+    move |fs: &MemFs| {
+        let put = |rel: &str, text: &str| fs.put(PathBuf::from("/ws").join(rel), text);
+        put(
+            "collections/api/collection.toml",
+            &format!("name = \"API\"\n[[variables]]\nkey = \"base\"\nvalue = \"{url}\"\n"),
+        );
+        put(
+            "collections/api/_order.toml",
+            "order = [\"one.toml\", \"two.toml\"]\n",
+        );
+        put(
+            "collections/api/one.toml",
+            "name = \"One\"\nurl = \"{{base}}/one?user={{user}}\"\n[scripts]\npost_response = \"pm.variables.set('n', (Number(pm.variables.get('n')) || 0) + 1); pm.test('ok', () => pm.response.to.have.status(200));\"\n",
+        );
+        put(
+            "collections/api/two.toml",
+            "name = \"Two\"\nurl = \"{{base}}/two\"\n[scripts]\npost_response = \"pm.test('n', () => pm.expect(pm.variables.get('n')).to.equal(String(pm.info.iteration + 1))); pm.globals.set('last', pm.iterationData.get('user'));\"\n",
+        );
+    }
+}
+
+#[tokio::test]
+async fn f16_ac1_opening_the_runner() {
+    let mut h = H::new(counting("http://127.0.0.1:9"));
+    h.update(Message::OpenRunner("collections/api".into()))
+        .await;
+    let r = runner(&h);
+    assert_eq!(r.name, "API");
+    let items: Vec<_> = r
+        .items
+        .iter()
+        .map(|i| (i.name.as_str(), i.method.as_str(), i.checked))
+        .collect();
+    assert_eq!(items, [("One", "GET", true), ("Two", "GET", true)]);
+    assert_eq!((r.iterations.as_str(), r.delay.as_str()), ("1", "0"));
+    assert!(r.can_run());
+    assert_eq!(h.app.tab().title(), "API");
+    // Opening it again brings the same tab forward; requests and unknown
+    // paths open nothing.
+    let tabs = h.app.tabs().len();
+    h.update(Message::OpenRunner("collections/api".into()))
+        .await;
+    h.update(Message::OpenRunner("collections/api/one.toml".into()))
+        .await;
+    h.update(Message::OpenRunner("collections/none".into()))
+        .await;
+    assert_eq!(h.app.tabs().len(), tabs);
+}
+
+#[tokio::test]
+async fn f16_ac1_invalid_settings_disable_run() {
+    let mut h = H::new(counting("http://127.0.0.1:9"));
+    h.update(Message::OpenRunner("collections/api".into()))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Iterations("0".into())))
+        .await;
+    assert_eq!(
+        runner(&h).iterations_error(),
+        Some("Enter a number from 1 to 1000")
+    );
+    assert!(!runner(&h).can_run());
+    h.update(Message::RunnerEdit(RunnerEdit::Iterations("2".into())))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Delay("70000".into())))
+        .await;
+    assert_eq!(
+        runner(&h).delay_error(),
+        Some("Enter a number from 0 to 60000")
+    );
+    h.update(Message::RunnerEdit(RunnerEdit::Delay("5".into())))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Item(0, false)))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Item(1, false)))
+        .await;
+    assert!(!runner(&h).can_run(), "nothing checked");
+    h.update(Message::RunnerEdit(RunnerEdit::Item(1, true)))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Bail(true))).await;
+    assert!(runner(&h).can_run());
+    // A bad data file blocks the run until it is cleared.
+    let tab = h.app.tab().id;
+    let effect = h.app.update(Message::RunnerPickData);
+    assert!(matches!(effect, Some(Effect::PickDataFile { tab: t }) if t == tab));
+    h.update(Message::DataFileLoaded {
+        tab,
+        path: "d.txt".into(),
+        result: Ok("[1]".into()),
+    })
+    .await;
+    assert_eq!(
+        runner(&h).data,
+        Some(Err(
+            "Data file must be CSV with a header row or a JSON array of objects".into()
+        ))
+    );
+    assert!(!runner(&h).can_run());
+    assert!(h.app.update(Message::RunStart).is_none());
+    h.update(Message::DataFileLoaded {
+        tab,
+        path: "d.csv".into(),
+        result: Err("Could not read d.csv: denied".into()),
+    })
+    .await;
+    assert_eq!(
+        runner(&h).data,
+        Some(Err("Could not read d.csv: denied".into()))
+    );
+    h.update(Message::RunnerEdit(RunnerEdit::ClearData)).await;
+    assert_eq!(runner(&h).data_file, None);
+    assert!(runner(&h).can_run());
+    assert!(h.app.update(Message::RunStart).is_some());
+}
+
+#[tokio::test]
+async fn f16_ac2_runs_with_data_and_carries_variables() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let mut h = H::new(counting(&server.uri()));
+    h.update(Message::OpenRunner("collections/api".into()))
+        .await;
+    let tab = h.app.tab().id;
+    h.update(Message::DataFileLoaded {
+        tab,
+        path: "users.csv".into(),
+        result: Ok("user\nada\nbob\n".into()),
+    })
+    .await;
+    h.update(Message::RunStart).await;
+    let run_state = runner(&h).run.as_ref().unwrap();
+    assert_eq!(run_state.status, ferry_app::runner::RunStatus::Finished);
+    let got: Vec<_> = run_state
+        .results
+        .iter()
+        .map(|r| {
+            (
+                r.iteration,
+                r.name.as_str(),
+                r.status,
+                r.passed(),
+                r.failed_tests(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (0, "One", Some(200), 1, 0),
+            (0, "Two", Some(200), 1, 0),
+            (1, "One", Some(200), 1, 0),
+            (1, "Two", Some(200), 1, 0),
+        ]
+    );
+    assert_eq!(
+        run_state.results[2].url,
+        format!("{}/one?user=bob", server.uri())
+    );
+    // Saved scopes reach their local files; pm.variables never do.
+    let globals = h.text("globals.local.toml").unwrap();
+    assert!(globals.contains("value = \"bob\""), "{globals}");
+    // Selecting a result, then exporting the report.
+    h.update(Message::RunSelect(1)).await;
+    assert_eq!(runner(&h).selected, Some(1));
+    h.update(Message::RunExport).await;
+    let report: serde_json::Value = serde_json::from_str(&h.reports[0]).unwrap();
+    assert_eq!(report["totals"]["requests"], 4);
+    assert_eq!(report["iterations"], 2);
+    h.update(Message::ReportSaved {
+        tab,
+        result: Ok("C:/r/run.json".into()),
+    })
+    .await;
+    assert_eq!(runner(&h).notice.as_deref(), Some("Saved to C:/r/run.json"));
+}
+
+#[tokio::test]
+async fn f16_ac4_stop_ends_the_run() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let mut h = H::new(counting(&server.uri()));
+    h.update(Message::OpenRunner("collections/api".into()))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Iterations("50".into())))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Delay("60000".into())))
+        .await;
+    // The first step runs at once; the second waits a minute.
+    let Some(first) = h.app.update(Message::RunStart) else {
+        panic!("no step")
+    };
+    let message = run(first, h.client.clone()).await.unwrap();
+    let Some(second) = h.app.update(message) else {
+        panic!("no second step")
+    };
+    let waiting = tokio::spawn(run(second, h.client.clone()));
+    assert!(h.app.update(Message::RunStop).is_none());
+    let message = tokio::time::timeout(Duration::from_secs(5), waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(h.app.update(message).is_none(), "nothing runs after a stop");
+    let run_state = runner(&h).run.as_ref().unwrap();
+    assert_eq!(run_state.status, ferry_app::runner::RunStatus::Stopped);
+    assert_eq!(run_state.notes, ["Run stopped"]);
+    assert_eq!(run_state.results.len(), 1);
+    // Settings can change once it has stopped.
+    h.update(Message::RunnerEdit(RunnerEdit::Iterations("3".into())))
+        .await;
+    assert_eq!(runner(&h).iterations, "3");
+    // A new run ignores results of the old one.
+    let Some(_) = h.app.update(Message::RunStart) else {
+        panic!("no step")
+    };
+    let tab = h.app.tab().id;
+    let stale = h.app.update(Message::RunStepFinished {
+        tab,
+        generation: 1,
+        result: Arc::new(ferry_app::Finished::Cancelled),
+        report: Arc::new(ferry_app::ScriptReport::default()),
+    });
+    assert!(stale.is_none());
+    assert!(runner(&h).running());
+    // While running, settings stay as they are.
+    h.update(Message::RunnerEdit(RunnerEdit::Iterations("9".into())))
+        .await;
+    assert_eq!(runner(&h).iterations, "3");
+}
+
+#[tokio::test]
+async fn f16_ac4_closing_the_tab_stops_the_run() {
+    let mut h = H::new(counting("http://127.0.0.1:9"));
+    h.update(Message::OpenRunner("collections/api".into()))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Delay("60000".into())))
+        .await;
+    h.update(Message::RunnerEdit(RunnerEdit::Iterations("2".into())))
+        .await;
+    let Some(first) = h.app.update(Message::RunStart) else {
+        panic!("no step")
+    };
+    let message = run(first, h.client.clone()).await.unwrap();
+    let Some(second) = h.app.update(message) else {
+        panic!("no second step")
+    };
+    let tab = h.app.tab().id;
+    let step = tokio::spawn(run(second, h.client.clone()));
+    h.app.update(Message::CloseTab(tab));
+    let done = tokio::time::timeout(Duration::from_secs(5), step).await;
+    assert!(done.is_ok(), "the waiting step was cancelled");
 }

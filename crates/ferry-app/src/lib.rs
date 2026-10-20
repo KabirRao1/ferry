@@ -11,6 +11,8 @@ pub mod console;
 mod doc;
 mod find;
 mod preview;
+pub mod runner;
+mod runner_tab;
 mod scripting;
 mod tab;
 mod workspace;
@@ -46,6 +48,8 @@ pub use ferry_core::session::{Session, SessionTab};
 pub use ferry_core::text::IndexError;
 pub use ferry_core::variables::{Origin, ScopeKind, Variable};
 pub use ferry_core::workspace::{EnvironmentEntry, Op, Workspace};
+pub use ferry_core::{datafile, time};
+pub use ferry_http::CancellationToken;
 pub use ferry_http::{Client, Config, Cookies};
 pub use ferry_script::{
     Info as ScriptInfo, Level as ScriptLevel, Location as ScriptLocation, Script, TestResult,
@@ -57,9 +61,10 @@ pub use ferry_store::{
 };
 pub use find::{FILTER_TOO_LARGE, Filter, FilterState, Find, NO_RESULTS, run as run_find};
 pub use preview::{PREVIEW_UNAVAILABLE, PreviewTarget, extension, previewable};
+pub use runner_tab::{RunnerDoc, RunnerEdit, RunnerItem, run_step};
 pub use scripting::{
     ScriptLine, ScriptReport, ScriptedSend, Sent, Targets as ScriptTargets, apply as apply_script,
-    execute as execute_scripted, script_request, script_response,
+    execute as execute_scripted, script_request, script_response, variables as run_variables,
 };
 pub use tab::{
     BodyFormat, Edit, FileTarget, Phase, Received, RequestTab, ResponseTab, RowEdit, Tab, TabId,

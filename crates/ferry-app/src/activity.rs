@@ -106,6 +106,18 @@ impl App {
         ferry_core::time::unix_millis(self.ambient.now())
     }
 
+    /// Keep the cookies a response set (F17-AC1).
+    pub(crate) fn store_cookies(&mut self, response: &Response) {
+        let now = self.now_ms();
+        for cookie in &response.set_cookies {
+            if let Some((host, path)) = host_and_path(&cookie.url) {
+                // Ignored cookies (F17-AC1) are simply not stored.
+                let _ = self.cookies.store(&cookie.header, &host, &path, now);
+                self.cookies_changed = true;
+            }
+        }
+    }
+
     /// Log a send whose scripts run first: the draft's method and URL
     /// until the request is built (F18-AC1, F15-AC2).
     pub(crate) fn started_scripted(&mut self, id: u64, draft: &RequestDraft) {
@@ -167,13 +179,7 @@ impl App {
             }
             Finished::Received(r) => {
                 let response = &r.response;
-                for cookie in &response.set_cookies {
-                    if let Some((host, path)) = host_and_path(&cookie.url) {
-                        // Ignored cookies (F17-AC1) are simply not stored.
-                        let _ = self.cookies.store(&cookie.header, &host, &path, now);
-                        self.cookies_changed = true;
-                    }
-                }
+                self.store_cookies(response);
                 let elapsed_ms = u64::try_from(response.elapsed.as_millis()).unwrap_or(u64::MAX);
                 if let Some(entry) = self.console.entry_mut(pending.console) {
                     if !response.sent.is_empty() {

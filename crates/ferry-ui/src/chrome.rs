@@ -191,6 +191,7 @@ pub fn tab_badge(tab: &Tab) -> (String, iced::Color) {
         Doc::Container(c) if c.kind == ItemKind::Collection => ("COL".to_owned(), theme::ACCENT),
         Doc::Container(_) => ("DIR".to_owned(), theme::ACCENT),
         Doc::Example(_) => ("EX".to_owned(), theme::MUTED),
+        Doc::Runner(_) => ("RUN".to_owned(), theme::ACCENT),
     }
 }
 
@@ -271,18 +272,6 @@ pub fn footer<'a>(state: &'a App, save_error: Option<&'a str>) -> Element<'a, Me
     .on_press(app(AppMessage::ToggleSidebar))
     .padding([3, 8])
     .style(theme::flat(false));
-    let later = |label: &'a str, when: &'a str| -> Element<'a, Message> {
-        tooltip(
-            button(text(label).size(SMALL))
-                .padding([3, 8])
-                .style(theme::flat(false)),
-            container(text(when).size(SMALL))
-                .padding(6)
-                .style(theme::dialog),
-            tooltip::Position::Top,
-        )
-        .into()
-    };
     let mut status = row![].spacing(6).align_y(Alignment::Center);
     if let Some(error) = state.status() {
         status = status
@@ -313,7 +302,15 @@ pub fn footer<'a>(state: &'a App, save_error: Option<&'a str>) -> Element<'a, Me
             status,
             space().width(12),
             cookies,
-            later("Runner", "The Collection Runner arrives in Phase 4"),
+            button(text("Runner").size(SMALL))
+                .on_press_maybe(
+                    state
+                        .runner_target()
+                        .is_some()
+                        .then(|| app(AppMessage::OpenRunnerHere)),
+                )
+                .padding([3, 8])
+                .style(theme::flat(false)),
             text(concat!("Ferry ", env!("CARGO_PKG_VERSION")))
                 .size(SMALL)
                 .style(theme::faint),

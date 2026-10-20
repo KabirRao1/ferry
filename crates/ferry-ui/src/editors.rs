@@ -39,6 +39,7 @@ fn doc_text(tab: &Tab) -> Option<&str> {
     match &tab.doc {
         Doc::Container(c) => Some(&c.draft.description),
         Doc::Example(e) => Some(&e.draft.body),
+        Doc::Runner(_) => None,
         Doc::Request | Doc::Environment(_) => None,
     }
 }
@@ -48,7 +49,7 @@ fn scripts(tab: &Tab) -> Option<&Scripts> {
     match &tab.doc {
         Doc::Request => Some(&tab.draft.scripts),
         Doc::Container(c) => Some(&c.draft.scripts),
-        Doc::Environment(_) | Doc::Example(_) => None,
+        Doc::Environment(_) | Doc::Example(_) | Doc::Runner(_) => None,
     }
 }
 

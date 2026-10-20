@@ -40,6 +40,7 @@ pub fn view<'a>(state: &'a App, tab: &'a Tab, editors: &'a Editors) -> Element<'
         Doc::Environment(env) => environment_view(tab, env),
         Doc::Container(c) => container_view(state, tab, c, editors),
         Doc::Example(e) => example_view(tab, e, editors),
+        Doc::Runner(r) => return crate::runner::view(tab, r, state.now()),
     };
     container(content)
         .padding([10, 16])
@@ -255,12 +256,21 @@ fn container_view<'a>(
             crate::scripts::view(tab.id, &c.draft.scripts, tab.script_phase, editors)
         }
     };
+    let run = button(text("Run").size(TEXT))
+        .on_press(Message::App(AppMessage::OpenRunner(c.path.clone())))
+        .padding([6, 16])
+        .style(theme::secondary);
     column![
-        title_bar(
-            kind,
-            text(c.name.as_str()).size(16).font(bold()).into(),
-            tab.is_dirty()
-        ),
+        row![
+            title_bar(
+                kind,
+                text(c.name.as_str()).size(16).font(bold()).into(),
+                tab.is_dirty()
+            ),
+            run
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
         tabs,
         container(content).height(Fill).width(Fill),
     ]

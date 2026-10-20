@@ -15,6 +15,7 @@ pub const ALLOWED: &[(&str, &[&str])] = &[
         &["ferry-core", "ferry-http", "ferry-store", "ferry-script"],
     ),
     ("ferry-ui", &["ferry-app"]),
+    ("ferry-cli", &["ferry-app", "ferry-store"]),
     ("xtask", &[]),
 ];
 

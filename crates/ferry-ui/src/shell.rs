@@ -56,6 +56,8 @@ pub enum Message {
     Modifiers(keyboard::Modifiers),
     /// The Preview area moved or changed size (F22-AC1).
     PreviewMoved,
+    /// A dialog was cancelled: nothing to do.
+    Ignore,
 }
 
 impl From<ferry_app::Message> for Message {
@@ -163,6 +165,7 @@ impl Shell {
                 self.modifiers = modifiers;
                 Task::none()
             }
+            Message::Ignore => Task::none(),
             Message::PreviewMoved => self.preview.place(),
             Message::RawAction(action) => {
                 let id = self.app.tab().id;
@@ -327,7 +330,25 @@ impl Shell {
                 }
                 None => Task::none(),
             },
-            effect @ (Effect::Send { .. } | Effect::ScriptedSend { .. }) => {
+            Effect::PickDataFile { tab } => {
+                Task::perform(load_data_file(), move |picked| match picked {
+                    Some((path, result)) => {
+                        Message::App(ferry_app::Message::DataFileLoaded { tab, path, result })
+                    }
+                    None => Message::Ignore,
+                })
+            }
+            Effect::SaveReport {
+                tab,
+                name,
+                contents,
+            } => Task::perform(save_report(name, contents), move |saved| match saved {
+                Some(result) => Message::App(ferry_app::Message::ReportSaved { tab, result }),
+                None => Message::Ignore,
+            }),
+            effect @ (Effect::Send { .. }
+            | Effect::ScriptedSend { .. }
+            | Effect::RunStep { .. }) => {
                 Task::perform(ferry_app::run(effect, self.client.clone()), |message| {
                     message.map(Message::App)
                 })
@@ -520,6 +541,47 @@ async fn pick_folder() -> Option<PathBuf> {
 }
 
 /// Ask the user for a file (F03-AC5, F03-AC6).
+/// Ask for a Runner data file and read it (F16-AC3); `None` if cancelled.
+async fn load_data_file() -> Option<(std::path::PathBuf, Result<String, String>)> {
+    let handle = rfd::AsyncFileDialog::new()
+        .set_title("Select a data file")
+        .add_filter("CSV or JSON", &["csv", "json", "txt"])
+        .pick_file()
+        .await?;
+    let path = handle.path().to_path_buf();
+    let read = path.clone();
+    let result = tokio::task::spawn_blocking(move || std::fs::read_to_string(&read))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r.map_err(|e| e.to_string()))
+        .map_err(|e| format!("Could not read {}: {e}", path.display()));
+    Some((path, result))
+}
+
+/// Ask where to save a run report and write it (F16-AC6); `None` if
+/// cancelled.
+async fn save_report(name: String, contents: String) -> Option<Result<std::path::PathBuf, String>> {
+    let handle = rfd::AsyncFileDialog::new()
+        .set_title("Export run results")
+        .set_file_name(name)
+        .add_filter("JSON", &["json"])
+        .save_file()
+        .await?;
+    let path = handle.path().to_path_buf();
+    let target = path.clone();
+    let written = tokio::task::spawn_blocking(move || {
+        std::fs::write(&target, contents.as_bytes()).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    Some(
+        written
+            .map(|()| path.clone())
+            .map_err(|e| format!("Could not save {}: {e}", path.display())),
+    )
+}
+
 async fn pick_file(target: FileTarget) -> Option<std::path::PathBuf> {
     let title = match target {
         FileTarget::Binary => "Select a file to send as the body",

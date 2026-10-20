@@ -1206,6 +1206,20 @@ dependencies = [
  "ferry-http",
  "ferry-script",
  "ferry-store",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "wiremock",
+]
+
+[[package]]
+name = "ferry-cli"
+version = "0.1.0"
+dependencies = [
+ "ferry-app",
+ "ferry-store",
+ "serde_json",
  "tokio",
  "url",
  "wiremock",
