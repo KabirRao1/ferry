@@ -6,4 +6,5 @@ curl 'https://api.test/upload' \
   --request POST \
   --location \
   --form-string 'title=Holiday' \
-  --form 'photo=@/home/ada/pics/beach.jpg'
+  --form 'photo=@/home/ada/pics/beach.jpg' \
+  --form 'notes=@notes.txt'

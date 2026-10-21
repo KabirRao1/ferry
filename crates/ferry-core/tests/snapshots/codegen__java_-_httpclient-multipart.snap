@@ -15,11 +15,14 @@ public class Main {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
         var body = new java.io.ByteArrayOutputStream();
-        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nHoliday\r\n".getBytes());
-        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"beach.jpg\"\r\n\r\n".getBytes());
+        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nHoliday\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"beach.jpg\"\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         body.writeBytes(Files.readAllBytes(Path.of("/home/ada/pics/beach.jpg")));
-        body.writeBytes("\r\n".getBytes());
-        body.writeBytes("------FerryFormBoundary--\r\n".getBytes());
+        body.writeBytes("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.writeBytes("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"notes\"; filename=\"notes.txt\"\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.writeBytes(Files.readAllBytes(Path.of("notes.txt")));
+        body.writeBytes("\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.writeBytes("------FerryFormBoundary--\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("https://api.test/upload"))
             .header("Content-Type", "multipart/form-data; boundary=----FerryFormBoundary")

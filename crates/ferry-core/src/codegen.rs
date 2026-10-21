@@ -633,7 +633,9 @@ fn go(s: &Snippet) -> String {
                     FormValue::File(p) => {
                         let _ = write!(
                             out,
-                            "\tfile, err := os.Open({p})\n\tif err != nil {{\n\t\tfmt.Println(err)\n\t\treturn\n\t}}\n\tpart, _ := writer.CreateFormFile({n}, filepath.Base({p}))\n\t_, _ = io.Copy(part, file)\n\tfile.Close()\n",
+                            // A block per file, so several files can each
+                            // declare `file` and `part`.
+                            "\t{{\n\t\tfile, err := os.Open({p})\n\t\tif err != nil {{\n\t\t\tfmt.Println(err)\n\t\t\treturn\n\t\t}}\n\t\tpart, _ := writer.CreateFormFile({n}, filepath.Base({p}))\n\t\t_, _ = io.Copy(part, file)\n\t\tfile.Close()\n\t}}\n",
                             p = go_str(p),
                             n = go_str(name)
                         );
@@ -805,7 +807,11 @@ fn java(s: &Snippet) -> String {
                         "        body.writeBytes(Files.readAllBytes(Path.of({})));",
                         js(&p)
                     ),
-                    None => writeln!(out, "        body.writeBytes({}.getBytes());", js(&text)),
+                    None => writeln!(
+                        out,
+                        "        body.writeBytes({}.getBytes(java.nio.charset.StandardCharsets.UTF_8));",
+                        js(&text)
+                    ),
                 };
             }
             "HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())".to_owned()

@@ -17,6 +17,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     reqwest::multipart::Part::bytes(std::fs::read("/home/ada/pics/beach.jpg")?)
                         .file_name("beach.jpg"),
                 )
+                .part(
+                    "notes",
+                    reqwest::multipart::Part::bytes(std::fs::read("notes.txt")?)
+                        .file_name("notes.txt"),
+                )
         );
 
     let response = request.send().await?;

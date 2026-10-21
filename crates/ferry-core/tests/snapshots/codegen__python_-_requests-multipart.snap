@@ -10,6 +10,7 @@ headers = {
 files = [
     ("title", (None, "Holiday")),
     ("photo", ("beach.jpg", open("/home/ada/pics/beach.jpg", "rb"))),
+    ("notes", ("notes.txt", open("notes.txt", "rb"))),
 ]
 
 response = requests.request("POST", url, headers=headers, files=files)

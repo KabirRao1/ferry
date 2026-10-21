@@ -54,6 +54,11 @@ fn multipart() -> RequestDraft {
             row: KeyValue::new("photo", ""),
             file: Some("/home/ada/pics/beach.jpg".into()),
         },
+        // A second file: each language must handle more than one.
+        FormField {
+            row: KeyValue::new("notes", ""),
+            file: Some("notes.txt".into()),
+        },
     ];
     d
 }
@@ -105,7 +110,7 @@ fn f19_ac2_snippet_input() {
     assert_eq!(names, ["X-Note", "Content-Type", "Authorization"]);
     assert!(matches!(s.body, SnippetBody::Raw(_)));
     assert!(matches!(snip(&urlencoded()).body, SnippetBody::UrlEncoded(ref f) if f.len() == 2));
-    assert!(matches!(snip(&multipart()).body, SnippetBody::FormData(ref p) if p.len() == 2));
+    assert!(matches!(snip(&multipart()).body, SnippetBody::FormData(ref p) if p.len() == 3));
     let b = snip(&binary());
     assert!(matches!(b.body, SnippetBody::File(ref p) if p == "data.bin"));
     assert!(!b.follow_redirects && !b.verify_tls);

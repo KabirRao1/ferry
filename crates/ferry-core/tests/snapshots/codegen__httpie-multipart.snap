@@ -4,4 +4,5 @@ expression: lang.generate(&s)
 ---
 http --follow --multipart POST 'https://api.test/upload' \
   'title=Holiday' \
-  'photo@/home/ada/pics/beach.jpg'
+  'photo@/home/ada/pics/beach.jpg' \
+  'notes@notes.txt'

@@ -14,6 +14,9 @@ body.append("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"t
 body.append("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"beach.jpg\"\r\n\r\n".data(using: .utf8)!)
 body.append(try Data(contentsOf: URL(fileURLWithPath: "/home/ada/pics/beach.jpg")))
 body.append("\r\n".data(using: .utf8)!)
+body.append("------FerryFormBoundary\r\nContent-Disposition: form-data; name=\"notes\"; filename=\"notes.txt\"\r\n\r\n".data(using: .utf8)!)
+body.append(try Data(contentsOf: URL(fileURLWithPath: "notes.txt")))
+body.append("\r\n".data(using: .utf8)!)
 body.append("------FerryFormBoundary--\r\n".data(using: .utf8)!)
 request.addValue("multipart/form-data; boundary=----FerryFormBoundary", forHTTPHeaderField: "Content-Type")
 request.httpBody = body

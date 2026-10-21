@@ -9,6 +9,7 @@ const FormData = require("form-data");
 const data = new FormData();
 data.append("title", "Holiday");
 data.append("photo", fs.createReadStream("/home/ada/pics/beach.jpg"));
+data.append("notes", fs.createReadStream("notes.txt"));
 
 const config = {
   method: "post",

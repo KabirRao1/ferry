@@ -14,6 +14,7 @@ curl_setopt_array($curl, [
     CURLOPT_POSTFIELDS => [
         'title' => 'Holiday',
         'photo' => new CURLFile('/home/ada/pics/beach.jpg'),
+        'notes' => new CURLFile('notes.txt'),
     ],
 ]);
 
