@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use ferry_app::{App, Doc, Method, ScriptPhase, Scripts, Tab, TabId, Table};
+use ferry_app::{App, Dialog, Doc, Method, ScriptPhase, Scripts, Tab, TabId, Table};
 use iced::widget::{combo_box, text_editor};
 
 /// Editor state for one tab.
@@ -92,6 +92,8 @@ pub struct Editors {
     docs: HashMap<TabId, DocEditor>,
     /// Script editors (F15-AC1).
     scripts: HashMap<(TabId, ScriptPhase), DocEditor>,
+    /// The Import dialog's text (F11-AC2).
+    import: Option<DocEditor>,
 }
 
 impl Editors {
@@ -165,6 +167,31 @@ impl Editors {
                 }
             }
         }
+        match app.dialog() {
+            Some(Dialog::Import { text, .. }) => {
+                let editor = self.import.get_or_insert_with(|| DocEditor {
+                    content: text_editor::Content::with_text(text),
+                    known: text.clone(),
+                });
+                if editor.known != *text {
+                    editor.content = text_editor::Content::with_text(text);
+                    text.clone_into(&mut editor.known);
+                }
+            }
+            _ => self.import = None,
+        }
+    }
+
+    /// The Import dialog's editor, while the dialog is open.
+    #[must_use]
+    pub fn import(&self) -> Option<&text_editor::Content> {
+        self.import.as_ref().map(|d| &d.content)
+    }
+
+    /// Apply an editor action to the Import dialog's text, returning the new
+    /// text if the action edited it.
+    pub fn import_action(&mut self, action: text_editor::Action) -> Option<String> {
+        perform(self.import.as_mut()?, action)
     }
 
     /// The editor of tab `id`'s `phase` script.

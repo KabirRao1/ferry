@@ -36,6 +36,8 @@ pub enum Message {
     DocAction(text_editor::Action),
     /// An edit in a script editor of the active tab (F15-AC1).
     ScriptAction(ferry_app::ScriptPhase, text_editor::Action),
+    /// An edit in the Import dialog's text (F11-AC2).
+    ImportAction(text_editor::Action),
     /// Something in the workspace folder changed on disk (F09-AC10).
     WorkspaceChanged,
     /// The request/response divider (F14-AC4).
@@ -223,6 +225,10 @@ impl Shell {
                     _ => Task::none(),
                 }
             }
+            Message::ImportAction(action) => match self.editors.import_action(action) {
+                Some(text) => self.update_app(ferry_app::Message::ImportText(text)),
+                None => Task::none(),
+            },
             Message::WorkspaceChanged => self.reload_workspace(),
             Message::ResizeStart => {
                 self.resizing = true;
@@ -343,8 +349,21 @@ impl Shell {
                 tab,
                 name,
                 contents,
-            } => Task::perform(save_report(name, contents), move |saved| match saved {
-                Some(result) => Message::App(ferry_app::Message::ReportSaved { tab, result }),
+            } => Task::perform(
+                save_text("Export run results", name, contents),
+                move |saved| match saved {
+                    Some(result) => Message::App(ferry_app::Message::ReportSaved { tab, result }),
+                    None => Message::Ignore,
+                },
+            ),
+            Effect::SaveExport { name, contents } => {
+                Task::perform(save_text("Export", name, contents), |saved| match saved {
+                    Some(result) => Message::App(ferry_app::Message::Exported(result)),
+                    None => Message::Ignore,
+                })
+            }
+            Effect::PickImportFile => Task::perform(load_import_file(), |loaded| match loaded {
+                Some(result) => Message::App(ferry_app::Message::ImportFileLoaded(result)),
                 None => Message::Ignore,
             }),
             effect @ (Effect::Send { .. }
@@ -559,11 +578,33 @@ async fn load_data_file() -> Option<(std::path::PathBuf, Result<String, String>)
     Some((path, result))
 }
 
-/// Ask where to save a run report and write it (F16-AC6); `None` if
-/// cancelled.
-async fn save_report(name: String, contents: String) -> Option<Result<std::path::PathBuf, String>> {
+/// Ask for a file to import and read it (F11-AC2); `None` if cancelled.
+async fn load_import_file() -> Option<Result<String, String>> {
     let handle = rfd::AsyncFileDialog::new()
-        .set_title("Export run results")
+        .set_title("Import")
+        .add_filter("Postman, OpenAPI or HAR", &["json", "yaml", "yml", "har"])
+        .add_filter("All files", &["*"])
+        .pick_file()
+        .await?;
+    let path = handle.path().to_path_buf();
+    let read = path.clone();
+    let result = tokio::task::spawn_blocking(move || std::fs::read_to_string(&read))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r.map_err(|e| e.to_string()))
+        .map_err(|e| format!("Could not read {}: {e}", path.display()));
+    Some(result)
+}
+
+/// Ask where to save `contents` and write it: a run report (F16-AC6) or an
+/// export (F11-AC6); `None` if cancelled.
+async fn save_text(
+    title: &str,
+    name: String,
+    contents: String,
+) -> Option<Result<std::path::PathBuf, String>> {
+    let handle = rfd::AsyncFileDialog::new()
+        .set_title(title)
         .set_file_name(name)
         .add_filter("JSON", &["json"])
         .save_file()

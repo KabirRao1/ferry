@@ -73,6 +73,14 @@ pub enum Dialog {
     ClearHistory,
     /// The cookie manager (F17-AC5).
     Cookies(crate::activity::CookieManager),
+    /// Import from a file or pasted text (F11-AC2).
+    Import {
+        text: String,
+        error: Option<String>,
+        /// After an import: what was created and what was not carried over
+        /// (F11-AC4).
+        summary: Vec<String>,
+    },
 }
 
 // CONTRACT
@@ -115,7 +123,7 @@ fn moved(path: &str, from: &str, to: &str) -> Option<String> {
     within(path, from).then(|| format!("{to}{}", &path[from.len()..]))
 }
 
-fn workspace_effect(action: impl Into<String>, ops: Vec<Op>) -> Option<Effect> {
+pub(crate) fn workspace_effect(action: impl Into<String>, ops: Vec<Op>) -> Option<Effect> {
     Some(Effect::Workspace {
         action: action.into(),
         ops,
@@ -185,7 +193,7 @@ fn env_vars(workspace: &Workspace, target: &EnvTarget) -> Option<(String, Vec<Va
 
 /// The file names of a container's children, in display order. The
 /// `collections` directory lists the collections.
-fn children(workspace: &Workspace, container: &str) -> Vec<String> {
+pub(crate) fn children(workspace: &Workspace, container: &str) -> Vec<String> {
     let items: &[Item] = if container == COLLECTIONS_DIR {
         &workspace.collections
     } else {
@@ -200,7 +208,7 @@ fn children(workspace: &Workspace, container: &str) -> Vec<String> {
         .collect()
 }
 
-fn env_file_names(workspace: &Workspace, except: Option<&str>) -> Vec<String> {
+pub(crate) fn env_file_names(workspace: &Workspace, except: Option<&str>) -> Vec<String> {
     workspace
         .environments
         .iter()
@@ -209,7 +217,7 @@ fn env_file_names(workspace: &Workspace, except: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-fn as_strs(names: &[String]) -> Vec<&str> {
+pub(crate) fn as_strs(names: &[String]) -> Vec<&str> {
     names.iter().map(String::as_str).collect()
 }
 
@@ -503,7 +511,10 @@ impl App {
             }
             Message::DialogConfirm => return self.confirm_dialog(),
             Message::DialogCancel => self.dialog = None,
-            Message::DismissStatus => self.status = None,
+            Message::DismissStatus => {
+                self.status = None;
+                self.notice = None;
+            }
             _ => {}
         }
         None
@@ -918,6 +929,14 @@ impl App {
                 self.delete(&target)
             }
             Dialog::ClearHistory | Dialog::Cookies(_) => self.confirm_activity_dialog(),
+            Dialog::Import { text, summary, .. } => {
+                if summary.is_empty() {
+                    self.run_import(&text)
+                } else {
+                    self.dialog = None;
+                    None
+                }
+            }
         }
     }
 
@@ -1320,7 +1339,7 @@ fn same_rows(a: &[Variable], b: &[Variable]) -> bool {
 
 /// Writes for a variables file and its local file, removing a local file
 /// that is no longer needed.
-fn variables_ops(path: &str, file: &VariablesFile) -> Vec<Op> {
+pub(crate) fn variables_ops(path: &str, file: &VariablesFile) -> Vec<Op> {
     let (shared, local) = environment::write(file);
     vec![
         Op::Write {

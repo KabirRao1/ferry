@@ -33,7 +33,7 @@ Developers use tools like Postman to send HTTP requests to an API and inspect wh
 
 ![Collection Runner results](docs/images/runner.png)
 
-**Generate code, paste cURL.** The Code panel shows the current request in 12 languages (cURL, Python, JavaScript, Go, Rust, Java and more). Pasting a `curl` command into the URL bar turns it into a request.
+**Generate code, import from Postman.** The Code panel shows the current request in 12 languages (cURL, Python, JavaScript, Go, Rust, Java and more). Postman collections and environments import and export, and pasting a `curl` command into the URL bar turns it into a request.
 
 ![Code panel with Python output](docs/images/code.png)
 
@@ -115,7 +115,7 @@ The goal is every Postman feature that runs on your own machine ([parity map](do
 | 2 | Postman-style workbench: params, headers, bodies, auth, tabs, timing | ✅ done |
 | 3 | Environments and variables, collections, history, cookies, console, previews | ✅ done |
 | 4 | JavaScript scripts and tests, Collection Runner, CLI, Visualize | ✅ done |
-| 5 | Code snippets ✅, cURL import ✅, Postman / OpenAPI / HAR import, OAuth 2.0 and other auth, proxy, vault | in progress |
+| 5 | Code snippets ✅, cURL and Postman import/export ✅, OpenAPI / HAR import, OAuth 2.0 and other auth, proxy, vault | in progress |
 | 6 | GraphQL, WebSocket, Socket.IO, server-sent events, gRPC, MQTT | planned |
 | 7 | Local mock server, docs generation, settings, releases | planned |
 

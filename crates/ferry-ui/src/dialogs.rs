@@ -1,16 +1,18 @@
 //! Modal dialogs: discard changes (F07-AC2), Save (F09-AC5), Rename
-//! (F09-AC7, F08-AC8), Delete, Clear history (F10-AC5) and the cookie
-//! manager (F17-AC5).
+//! (F09-AC7, F08-AC8), Delete, Clear history (F10-AC5), the cookie
+//! manager (F17-AC5) and Import (F11-AC2, AC4).
 
 use ferry_app::{
     App, CookieManager, Dialog, Item, ItemKind, Message as AppMessage, Node, Target, format,
 };
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, button, center, column, container, row, scrollable, space, text, text_input,
+    Column, button, center, column, container, row, scrollable, space, text, text_editor,
+    text_input,
 };
 use iced::{Alignment, Fill, Length};
 
+use crate::editors::Editors;
 use crate::screen::{SMALL, TEXT};
 use crate::shell::Message;
 use crate::{Element, theme};
@@ -21,6 +23,9 @@ pub const CLEAR_HISTORY: &str = "Clear all history?";
 pub const MANAGE_COOKIES: &str = "Manage Cookies";
 pub const NO_DOMAINS: &str = "No cookies yet";
 pub const ADD_COOKIE: &str = "Add Cookie";
+pub const CHOOSE_FILE: &str = "Choose File…";
+pub const IMPORT_HINT: &str =
+    "Paste a Postman collection or environment, or a cURL command, or choose a file.";
 
 fn app(message: AppMessage) -> Message {
     Message::App(message)
@@ -28,7 +33,7 @@ fn app(message: AppMessage) -> Message {
 
 /// The dialog to show over the window, if any.
 #[must_use]
-pub fn view(state: &App) -> Option<Element<'_, Message>> {
+pub fn view<'a>(state: &'a App, editors: &'a Editors) -> Option<Element<'a, Message>> {
     if state.confirm_close().is_some() {
         return Some(confirm_close());
     }
@@ -49,8 +54,73 @@ pub fn view(state: &App) -> Option<Element<'_, Message>> {
         Dialog::ConfirmDelete { target, name } => confirm_delete(target, name),
         Dialog::ClearHistory => clear_history(),
         Dialog::Cookies(manager) => cookies(state, manager),
+        Dialog::Import { error, summary, .. } => {
+            import(editors.import(), error.as_deref(), summary)
+        }
     };
     Some(dialog)
+}
+
+/// Pasted text or a file to import, then what was imported (F11-AC2, AC4).
+fn import<'a>(
+    content: Option<&'a text_editor::Content>,
+    error: Option<&'a str>,
+    summary: &'a [String],
+) -> Element<'a, Message> {
+    let title = text("Import").size(16);
+    if let [first, skipped @ ..] = summary {
+        let mut body = column![title, text(first.as_str()).size(TEXT)].spacing(12);
+        if !skipped.is_empty() {
+            let lines = skipped.iter().map(|line| {
+                text(format!("•  {line}"))
+                    .size(SMALL)
+                    .style(theme::muted)
+                    .into()
+            });
+            body = body.push(text("Not carried over").size(SMALL).style(theme::muted));
+            body = body
+                .push(scrollable(Column::with_children(lines).spacing(4)).height(Length::Shrink));
+        }
+        body = body.push(row![
+            space().width(Fill),
+            button(text("Done").size(TEXT))
+                .on_press(app(AppMessage::DialogConfirm))
+                .padding([6, 14])
+                .style(theme::primary),
+        ]);
+        return frame(body, 560.0);
+    }
+    let editor: Element<'a, Message> = match content {
+        Some(content) => text_editor(content)
+            .on_action(Message::ImportAction)
+            .placeholder("Paste here")
+            .size(SMALL)
+            .font(iced::Font::MONOSPACE)
+            .height(Length::Fixed(220.0))
+            .padding(8)
+            .into(),
+        None => space().height(Length::Fixed(220.0)).into(),
+    };
+    let mut body = column![
+        title,
+        text(IMPORT_HINT).size(TEXT).style(theme::muted),
+        button(text(CHOOSE_FILE).size(TEXT))
+            .on_press(app(AppMessage::ImportChooseFile))
+            .padding([6, 14])
+            .style(theme::secondary),
+        editor,
+    ]
+    .spacing(12);
+    if let Some(error) = error {
+        body = body.push(text(error).size(SMALL).style(theme::error));
+    }
+    body = body.push(buttons(
+        "Import",
+        app(AppMessage::DialogConfirm),
+        app(AppMessage::DialogCancel),
+        false,
+    ));
+    frame(body, 560.0)
 }
 
 fn frame<'a>(content: impl Into<Element<'a, Message>>, width: f32) -> Element<'a, Message> {

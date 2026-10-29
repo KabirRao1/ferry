@@ -39,7 +39,7 @@ pub fn view<'a>(
         .width(Fill)
         .height(Fill)
         .style(theme::app_background);
-    match dialogs::view(app) {
+    match dialogs::view(app, editors) {
         Some(dialog) => stack![main, opaque(dialog)].into(),
         None => main.into(),
     }

@@ -273,6 +273,17 @@ pub fn footer<'a>(state: &'a App, save_error: Option<&'a str>) -> Element<'a, Me
     .padding([3, 8])
     .style(theme::flat(false));
     let mut status = row![].spacing(6).align_y(Alignment::Center);
+    if let Some(notice) = state.notice() {
+        status = status.push(text(notice).size(SMALL).style(theme::muted));
+        if state.status().is_none() {
+            status = status.push(
+                button(text("×").size(12))
+                    .on_press(app(AppMessage::DismissStatus))
+                    .padding([0, 6])
+                    .style(theme::flat(false)),
+            );
+        }
+    }
     if let Some(error) = state.status() {
         status = status
             .push(text(error).size(SMALL).style(theme::error))

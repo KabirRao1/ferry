@@ -9,7 +9,7 @@ use std::fmt;
 
 use serde_json::Value;
 
-use crate::collection::{CollectionFile, FolderFile, RequestFile};
+use crate::collection::{CollectionFile, FolderFile, Item, Node, RequestFile};
 use crate::curl;
 use crate::draft::RequestDraft;
 use crate::environment::VariablesFile;
@@ -68,6 +68,33 @@ impl Collection {
         let mut counts = (0, 0);
         walk(&self.items, &mut counts);
         counts
+    }
+}
+
+// CONTRACT
+/// The collection at the root of a workspace tree, for export; folders and
+/// requests that could not be read are left out. `None` for anything else.
+#[must_use]
+pub fn from_tree(item: &Item) -> Option<Collection> {
+    fn entries(items: &[Item]) -> Vec<Entry> {
+        items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Node::Folder(file) => Some(Entry::Folder {
+                    file: file.clone(),
+                    items: entries(&item.items),
+                }),
+                Node::Request(file) => Some(Entry::Request(file.clone())),
+                Node::Collection(_) | Node::Broken { .. } => None,
+            })
+            .collect()
+    }
+    match &item.node {
+        Node::Collection(file) => Some(Collection {
+            file: file.clone(),
+            items: entries(&item.items),
+        }),
+        _ => None,
     }
 }
 

@@ -213,6 +213,20 @@ pub enum Message {
     /// Hide the footer's error.
     DismissStatus,
 
+    // --- import and export (F11) ---
+    /// Open the Import dialog (F11-AC2).
+    OpenImport,
+    /// Text pasted or typed into the Import dialog.
+    ImportText(String),
+    /// `Choose File…` in the Import dialog.
+    ImportChooseFile,
+    /// The chosen file's text, or why it could not be read.
+    ImportFileLoaded(Result<String, String>),
+    /// `Export…` on a collection or environment (F11-AC6).
+    Export(Target),
+    /// Where the export was saved, or why it could not be.
+    Exported(Result<PathBuf, String>),
+
     // --- history (F10) ---
     HistorySearch(String),
     /// Open an entry in a new tab (F10-AC4).
@@ -328,6 +342,15 @@ pub enum Effect {
         name: String,
         contents: String,
     },
+    /// Ask for a file to import, read it and report
+    /// [`Message::ImportFileLoaded`] (F11-AC2).
+    PickImportFile,
+    /// Ask where to save an export named `name`, write `contents` and
+    /// report [`Message::Exported`] (F11-AC6).
+    SaveExport {
+        name: String,
+        contents: String,
+    },
     /// Put text on the clipboard.
     CopyText(String),
     SaveSession(Session),
@@ -419,6 +442,8 @@ pub struct App {
     pub(crate) tree_target: Option<String>,
     /// The last workspace error, shown in the footer.
     pub(crate) status: Option<String>,
+    /// The last export's result, shown in the footer (F11-AC6).
+    pub(crate) notice: Option<String>,
     pub(crate) ambient: Box<dyn Ambient>,
     pub(crate) history: History,
     pub(crate) history_search: String,
@@ -477,6 +502,7 @@ impl App {
             tree_drag: None,
             tree_target: None,
             status: None,
+            notice: None,
             ambient: Box::new(SystemAmbient::default()),
             history: History::default(),
             history_search: String::new(),
@@ -685,6 +711,12 @@ impl App {
         self.status.as_deref()
     }
 
+    /// Where the last export was saved (F11-AC6).
+    #[must_use]
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
+    }
+
     // CONTRACT
     /// What Inherit means for a request tab: the nearest parent's auth and
     /// where it comes from, or `None` for an unlinked tab (F04-AC6).
@@ -873,6 +905,12 @@ impl App {
             Message::PreviewFailed(_) | Message::OpenInBrowser => {
                 return self.preview_message(message);
             }
+            Message::OpenImport
+            | Message::ImportText(_)
+            | Message::ImportChooseFile
+            | Message::ImportFileLoaded(_)
+            | Message::Export(_)
+            | Message::Exported(_) => return self.import_message(message),
             other => return self.workspace_message(other),
         }
         None

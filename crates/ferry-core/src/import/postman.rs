@@ -15,7 +15,7 @@ use crate::auth::{ApiKeyLocation, AuthDraft, AuthKind};
 use crate::body::{BodyDraft, BodyMode, FormField, RawLanguage};
 use crate::collection::{CollectionFile, Example, FolderFile, RequestFile};
 use crate::draft::RequestDraft;
-use crate::environment::VariablesFile;
+use crate::environment::{self, VariablesFile};
 use crate::kv::KeyValue;
 use crate::params::{self, Param};
 use crate::request::{Method, SendOptions};
@@ -520,11 +520,15 @@ fn row_json(row: &KeyValue) -> Value {
 }
 
 // CONTRACT
-/// A Postman Collection v2.1 file for `collection` (F11-AC6). Secret
-/// variable values are written empty.
+/// A Postman Collection v2.1 file for `collection` (F11-AC6). Variables
+/// are written as the shared file has them: secret values empty, and
+/// values only in the local file left out.
 #[must_use]
 pub fn export_collection(collection: &Collection) -> String {
-    let file = &collection.file;
+    let file = &CollectionFile {
+        variables: environment::shared_variables(&collection.file.variables),
+        ..collection.file.clone()
+    };
     let mut info = vec![("name", json!(file.name)), ("schema", json!(SCHEMA_V21))];
     if !file.description.is_empty() {
         info.push(("description", json!(file.description)));
@@ -818,10 +822,11 @@ fn events_json(s: &Scripts) -> Option<Value> {
 }
 
 // CONTRACT
-/// A Postman environment file (F11-AC6). Secret values are written empty.
+/// A Postman environment file (F11-AC6), with the values of the shared
+/// file: secret values empty, local-only values left out.
 #[must_use]
 pub fn export_environment(name: &str, variables: &[Variable]) -> String {
-    let values = variables
+    let values = environment::shared_variables(variables)
         .iter()
         .map(|v| {
             json!({

@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Import: Postman collections (v2.0 and v2.1) and environments, from a file or pasted text, with a summary of anything not carried over; pasting a cURL command into the URL field or the Import dialog turns it into a request.
+- Export: collections and environments as Postman v2.1 files, without secret values.
+- Code panel: the current request as code in 12 languages (cURL, HTTPie, Python, JavaScript, Node.js, Go, Rust, Java, C#, PHP, Ruby, Swift), with Copy.
 - Scripts: pre-request and post-response JavaScript on requests, folders and collections, with Postman's `pm` API (`pm.test`, `pm.expect`, `pm.response`, `pm.request`, `pm.environment`, `pm.variables`, `pm.sendRequest` and more), run in a QuickJS sandbox with time and memory limits.
 - Test Results tab with passed, failed and skipped tests and filters; script `console` output in the Console.
 - Collection Runner: run a collection or folder with iterations, a delay and CSV or JSON data files, follow results live, stop, and export a JSON report.

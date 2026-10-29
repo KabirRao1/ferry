@@ -11,6 +11,7 @@ mod code;
 pub mod console;
 mod doc;
 mod find;
+mod import;
 mod preview;
 pub mod runner;
 mod runner_tab;
@@ -43,6 +44,7 @@ pub use ferry_core::format;
 pub use ferry_core::history::{
     Entry as HistoryEntry, History, MAX_BODY as HISTORY_MAX_BODY, Outcome as HistoryOutcome,
 };
+pub use ferry_core::import::NOT_IMPORTABLE;
 pub use ferry_core::json::JsonError;
 pub use ferry_core::kv::KeyValue;
 pub use ferry_core::request::{Method, Part, PartValue, Request, RequestBody};
