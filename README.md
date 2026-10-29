@@ -2,35 +2,99 @@
 
 [![CI](https://github.com/KabirRao1/ferry/actions/workflows/ci.yml/badge.svg)](https://github.com/KabirRao1/ferry/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Rust](https://img.shields.io/badge/Rust-native%20desktop-orange.svg)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 
-**A native, low-memory, offline HTTP API client.** A lean alternative to Postman, written in Rust.
+**A fast, native desktop app for testing web APIs: an offline alternative to Postman, written in Rust.**
+
+Developers use tools like Postman to send HTTP requests to an API and inspect what comes back. Postman runs on Electron (a bundled web browser) and pushes you toward a cloud account. Ferry has the same layout and the same local features, but it is a native app that idles at about 24 MB of RAM, opens in under 100 ms, needs no account and keeps everything in plain files you can commit to git.
 
 ![Ferry showing a JSON response](docs/images/screenshot.png)
 
-- **Native UI.** No Electron; a web view is only created for HTML previews. Idles at about 24 MB of RAM and opens in under 100 ms.
-- **Handles huge responses.** A 50 MB body scrolls smoothly; only the visible lines are ever rendered.
-- **Offline and private.** No account, no sign-in, no telemetry.
-- **Plain-file collections.** Requests, environments and globals are TOML files in a folder, so you can keep them in git and review them like code. Secrets stay in git-ignored `*.local.toml` files.
+## At a glance
 
-> **Status: early development.** Ferry has collections, environments and variables, history, a cookie jar, a console, response search and previews, in tabs that survive restarts.
-> Scripts, the Collection Runner, imports and more protocols are on the [roadmap](#roadmap).
+| | |
+|---|---|
+| **What** | A cross-platform desktop API client: build requests, send them, inspect responses, script tests, run whole collections |
+| **Built with** | Rust, [iced](https://iced.rs) (native UI), reqwest + rustls (HTTP), QuickJS (sandboxed JavaScript), wry (embedded web view) |
+| **Size** | About 39,000 lines of Rust in 8 crates, 663 automated tests, 53 written design decisions |
+| **Quality gates** | Coverage floors, mutation testing, fuzzing, UI snapshot tests and performance budgets, run on Windows, macOS and Linux in CI |
+| **Status** | Phases 0–4 complete; Phase 5 (import/export, code snippets, advanced auth) in progress |
 
-## Quick start
+## What it does
 
-### 1. Install Rust
+**Build and send requests.** Any method, query parameters kept in sync with the URL, headers, JSON / form / file bodies, Basic, Bearer and API-key auth. The response shows status, size and a timing breakdown (DNS, connect, waiting, download), with pretty-printed JSON, search, JSONPath filtering and HTML / image / PDF previews. Bodies of hundreds of megabytes scroll smoothly.
 
-Install [rustup](https://rustup.rs). Ferry pins its Rust version in `rust-toolchain.toml`, and rustup downloads it automatically the first time you build.
+**Write tests in JavaScript.** Each request can run scripts before and after it is sent, using Postman's `pm` API, so existing Postman tests work as they are.
 
-### 2. Install platform build tools
+![Test results after a send](docs/images/tests.png)
+
+**Run whole collections.** The Collection Runner sends a folder of requests in order, repeats them over rows of a CSV or JSON data file, and reports every test. `ferry-cli` runs the same collections headless in CI and exits non-zero when a test fails.
+
+![Collection Runner results](docs/images/runner.png)
+
+**Generate code, paste cURL.** The Code panel shows the current request in 12 languages (cURL, Python, JavaScript, Go, Rust, Java and more). Pasting a `curl` command into the URL bar turns it into a request.
+
+![Code panel with Python output](docs/images/code.png)
+
+**Organize your work.** Collections and folders are TOML files in a workspace folder you can version in git. Environments and `{{variables}}` switch between dev and production, and secrets stay in git-ignored files. History, a cookie jar, a console and tabs that survive restarts are all built in.
+
+The [user guide](docs/USER_GUIDE.md) walks through every feature.
+
+## How it is built
+
+```mermaid
+flowchart LR
+    ui["ferry-ui<br/>iced views, web view"] --> app
+    cli["ferry-cli<br/>headless runner"] --> app
+    app["ferry-app<br/>state machine:<br/>Message → update → Effect"] --> core
+    app --> http["ferry-http<br/>reqwest + rustls"]
+    app --> store["ferry-store<br/>files, session, history"]
+    app --> script["ferry-script<br/>QuickJS sandbox"]
+    script --> core["ferry-core<br/>pure logic, no I/O"]
+    http --> core
+    store --> core
+```
+
+The dependency direction above is enforced by a build check (`cargo xtask arch`), so the UI can never reach around the app layer to the network or the disk.
+
+### Engineering highlights
+
+- **Elm architecture, tested without a screen.** The whole app is a state machine: user actions are `Message`s, `update()` changes state and returns `Effect`s (send, save, copy) for a thin shell to perform. `update()` does no I/O and gets time and randomness injected, so every user flow, from typing a URL to running a collection, is tested headless and deterministically.
+- **Huge responses in little memory.** A line index over the raw bytes and a virtualized view mean only the visible lines are ever laid out. Search and filtering run on background threads and drop stale results by job id.
+- **A real JavaScript sandbox.** Each script gets a fresh QuickJS runtime with 64 MB memory, 5 second and stack limits, and no file, process or network access. Postman's `pm` API is a JavaScript layer over a small native bridge. Time spent waiting on `pm.sendRequest` doesn't count against the limit.
+- **Secure previews.** HTML previews run in the OS web view with scripts off and navigation, downloads and new windows blocked. The Visualize view allows scripts, but behind a Content Security Policy that blocks all network access.
+- **Git-friendly storage.** One file per request, atomic writes, live reload when files change on disk, and secrets kept out of shared files.
+- **Code generators checked against a parser.** Snippets for 12 languages are pinned with snapshot tests, and a property test generates random requests, turns each into cURL and parses it back to check that nothing is lost.
+
+### How it is tested
+
+| Technique | What it does here |
+|---|---|
+| Unit and integration tests | 663 tests, each named after the acceptance criterion it covers (e.g. `f15_ac9_…`) in the [spec](docs/SPEC.md) |
+| Headless UI tests | iced's simulator clicks and types into the real views; 22 byte-exact screenshot tests catch visual regressions |
+| End-to-end | Real HTTP against local mock servers (wiremock), including the CLI binary |
+| Property-based tests | proptest for URL/params sync, variables, cookies, cURL round-trips |
+| Fuzzing | 7 cargo-fuzz targets; findings such as unbounded JSON nesting and variable-expansion blow-ups are fixed with regression tests |
+| Mutation testing | cargo-mutants on every change and nightly over the whole codebase in 8 parallel shards; any surviving mutant needs a new test |
+| Coverage floors | core, app and store must stay at 90 % or more (currently 92–99 %) |
+| Performance budgets | Idle memory, startup time, frame time while scrolling a 50 MB body, and binary size, measured on all three OSes |
+| Supply chain | cargo-deny checks licenses, security advisories and crate sources |
+
+Every bug these checks found is written up with its fix and regression test in [FINDINGS.md](docs/FINDINGS.md), and every design choice is recorded with its alternatives in [DECISIONS.md](docs/DECISIONS.md).
+
+## Run it
+
+Install [Rust](https://rustup.rs) and your platform's build tools:
 
 | OS | What you need |
 |---|---|
-| **Windows** | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Desktop development with C++** workload. rustup's installer offers to install this for you. |
-| **macOS** | Xcode command line tools: `xcode-select --install` |
+| **Windows** | [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++** (rustup's installer offers it) |
+| **macOS** | `xcode-select --install` |
 | **Linux (Debian/Ubuntu)** | `sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev` |
 | **Linux (Fedora)** | `sudo dnf install gcc pkg-config libxkbcommon-devel wayland-devel` |
 
-### 3. Build and run
+Then:
 
 ```sh
 git clone https://github.com/KabirRao1/ferry.git
@@ -38,122 +102,36 @@ cd ferry
 cargo run --release
 ```
 
-The first build takes a few minutes. Later builds are incremental.
-
-To install the `ferry` command on your `PATH` instead:
-
-```sh
-cargo install --git https://github.com/KabirRao1/ferry ferry-ui
-```
-
-## Using Ferry
-
-The window is laid out like Postman: a sidebar on the left, request tabs across the top, the request builder above the response.
-
-1. Pick a method (GET, POST, …) or type your own, such as `PROPFIND`.
-2. Type a URL, for example `https://httpbin.org/json`. Query parameters show up in the **Params** table, and editing the table updates the URL.
-3. Add what the request needs:
-   - **Authorization**: Basic Auth, Bearer Token or API Key.
-   - **Headers**: your own rows, plus the headers Ferry adds (click "hidden" to see them).
-   - **Body**: form-data (text and files), x-www-form-urlencoded, raw (Text, JSON with validation and Beautify, XML, HTML, JavaScript) or a binary file.
-   - **Settings**: turn off following redirects or certificate verification.
-4. Press **Send**, **Enter** in the URL field, or **Ctrl+Enter** (**⌘+Enter** on macOS).
-5. Read the status, time (hover for the DNS / connect / waiting / download breakdown) and size. JSON is pretty-printed; switch to **Raw** or **Hex** at any time.
-
-Tables have **Bulk Edit** for pasting `key: value` lines. Open tabs, including unsent requests, are restored when you start Ferry again.
-
-### Collections, environments and variables
-
-Ferry keeps your work in a **workspace folder** (by default `workspace` in Ferry's data directory; click the workspace name at the top left to pick another folder). Press **Ctrl+S** to save a request into a collection. Collections, folders and requests appear in the sidebar, where you can rename, duplicate, delete and drag them; every change is a plain file you can commit.
-
-Write `{{name}}` anywhere in a request to use a variable. Values come from the environment picked in the top right, then the collection, then **Globals**. Mark a variable **Secret** to keep its value in a `*.local.toml` file next to the environment, which the workspace's `.gitignore` excludes. Dynamic variables such as `{{$guid}}`, `{{$timestamp}}` and `{{$randomInt}}` get a fresh value on every send.
-
-### After you send
-
-- **History** in the sidebar lists the last 100 requests with their responses; click one to open it again.
-- **Cookies** set by responses are kept and sent with later requests to the same site. The response's **Cookies** tab lists what it set; **Cookies** in the footer manages the jar. Turn the jar off for one request in its **Settings**.
-- **Console** in the footer logs every request exactly as sent, with its headers and body.
-- **Search** (Ctrl+F) finds text in the response body; **Enter** and **Shift+Enter** step through matches.
-- For JSON, type a **JSONPath** expression such as `$.items[*].name` above the body to see just those values.
-- **Preview** shows HTML, images, audio, video and PDFs (Windows and macOS); **Open in Browser** opens the body with your default application.
-- **Save as Example** keeps a response with its saved request.
-
-### Scripts and tests
-
-Each request, folder and collection has a **Scripts** tab with a **Pre-request** script, which runs before the request is sent, and a **Post-response** script, which runs after the response arrives. Scripts are JavaScript with Postman's `pm` API:
-
-```js
-// Pre-request: log in and keep the token for this environment.
-pm.sendRequest({ url: pm.variables.get("base") + "/login", method: "POST" }, (err, res) => {
-  pm.environment.set("token", res.json().token);
-});
-
-// Post-response: tests show up in the response's Test Results tab.
-pm.test("status is 200", () => pm.response.to.have.status(200));
-pm.test("has an id", () => pm.expect(pm.response.json().id).to.be.a("number"));
-```
-
-Scripts run in a sandbox with no file, process or network access (apart from `pm.sendRequest`), stop after 5 seconds or 64 MB, and log `console.log` output to the Console. Values scripts store with `pm.environment.set`, `pm.globals.set` or `pm.collectionVariables.set` go to the git-ignored `*.local.toml` files, so running scripts never changes the files you share.
-
-`pm.visualizer.set(template, data)` adds a **Visualize** view to the response: a [Handlebars](https://handlebarsjs.com/) template rendered with your data. Its own scripts can run, for example to draw a chart, but it cannot load or send anything over the network.
-
-### Collection Runner and CLI
-
-**Run** on a collection or folder (its `…` menu, its settings, or **Runner** in the footer) opens the Collection Runner: pick the requests, the number of iterations, a delay and an optional CSV or JSON data file (one iteration per row, its columns available as variables and `pm.iterationData`), then **Run**. Results appear as they finish; **Export Results** saves a JSON report. `pm.execution.setNextRequest("Name")` jumps to another request.
-
-The same runs work headless, for CI, with `ferry-cli`, which release archives include:
-
-```sh
-ferry-cli run collections/api --workspace path/to/workspace --environment staging --data users.csv --report report.json
-```
-
-It prints each request and its failed tests, and exits with 0 when everything passed, 1 when a request or test failed, and 2 for invalid arguments.
-
-| Shortcut | Action |
-|---|---|
-| Ctrl+Enter | Send |
-| Ctrl+T / Ctrl+W | New tab / close tab |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
-| Ctrl+B | Show or hide the sidebar |
-| Ctrl+S | Save the request |
-| Ctrl+F | Search the response body |
-
-On macOS, use ⌘ instead of Ctrl (Ctrl+Tab stays Ctrl).
+The first build takes a few minutes. Try `https://httpbin.org/json` in the URL bar and press **Ctrl+Enter**. To run the tests: `cargo test --workspace`; to run the full merge gate: `cargo xtask gate`.
 
 ## Roadmap
 
-Ferry is heading for Postman's layout and every Postman feature that runs on your machine: no account, no cloud ([parity map](docs/POSTMAN_PARITY.md)).
+The goal is every Postman feature that runs on your own machine ([parity map](docs/POSTMAN_PARITY.md)).
 
 | Phase | Features | Status |
 |---|---|---|
 | 0 | Foundations: CI, test harness, performance budgets | ✅ done |
 | 1 | Send a request, see status, headers and body | ✅ done |
-| 2 | Postman-style workbench, query params, headers, bodies, auth, tabs, redirect/TLS options, timing breakdown | ✅ done |
-| 3 | Variables and environments, collections, history, cookies, console, saved examples, HTML preview | ✅ done |
-| 4 | Pre-request and test scripts (`pm` API), Collection Runner, CLI, Visualize | ✅ done |
-| 5 | Import/export (Postman, cURL, OpenAPI, HAR), code snippets, OAuth and other auth, proxy and certificates, vault | next |
+| 2 | Postman-style workbench: params, headers, bodies, auth, tabs, timing | ✅ done |
+| 3 | Environments and variables, collections, history, cookies, console, previews | ✅ done |
+| 4 | JavaScript scripts and tests, Collection Runner, CLI, Visualize | ✅ done |
+| 5 | Code snippets ✅, cURL import ✅, Postman / OpenAPI / HAR import, OAuth 2.0 and other auth, proxy, vault | in progress |
 | 6 | GraphQL, WebSocket, Socket.IO, server-sent events, gRPC, MQTT | planned |
-| 7 | Local mock server, docs generation, find and replace, settings, keyboard, releases | planned |
+| 7 | Local mock server, docs generation, settings, releases | planned |
 
-## Contributing
-
-Contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development setup, the test-first workflow and the merge gate.
+## Documentation
 
 | Document | Contents |
 |---|---|
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | How to use every feature |
+| [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | One-page summary of features, architecture and verification |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How the crates fit together |
 | [`docs/SPEC.md`](docs/SPEC.md) | Features and acceptance criteria |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architecture decision records |
 | [`docs/FEATURES.md`](docs/FEATURES.md) | Feature status and test counts |
-| [`docs/FINDINGS.md`](docs/FINDINGS.md) | QA findings and their regression tests |
-| [`CHANGELOG.md`](CHANGELOG.md) | Notable changes per release |
-
-## Security
-
-Please report vulnerabilities privately. See [`SECURITY.md`](SECURITY.md).
+| [`docs/FINDINGS.md`](docs/FINDINGS.md) | Bugs found by testing, with their regression tests |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup and the merge gate |
 
 ## License
 
-Licensed under the Apache License, Version 2.0 ([`LICENSE`](LICENSE)).
-
-Unless you explicitly state otherwise, any contribution you intentionally submit for inclusion in this project, as defined in the Apache-2.0 license, is licensed as above, without any additional terms or conditions.
+Apache License 2.0 ([`LICENSE`](LICENSE)). To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
