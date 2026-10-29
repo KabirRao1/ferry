@@ -17,7 +17,7 @@ Developers use tools like Postman to send HTTP requests to an API and inspect wh
 |---|---|
 | **What** | A cross-platform desktop API client: build requests, send them, inspect responses, script tests, run whole collections |
 | **Built with** | Rust, [iced](https://iced.rs) (native UI), reqwest + rustls (HTTP), QuickJS (sandboxed JavaScript), wry (embedded web view) |
-| **Size** | About 39,000 lines of Rust in 8 crates, 663 automated tests, 53 written design decisions |
+| **Size** | About 42,000 lines of Rust in 8 crates, 691 automated tests, 53 written design decisions |
 | **Quality gates** | Coverage floors, mutation testing, fuzzing, UI snapshot tests and performance budgets, run on Windows, macOS and Linux in CI |
 | **Status** | Phases 0–4 complete; Phase 5 (import/export, code snippets, advanced auth) in progress |
 
@@ -71,11 +71,11 @@ The dependency direction above is enforced by a build check (`cargo xtask arch`)
 
 | Technique | What it does here |
 |---|---|
-| Unit and integration tests | 663 tests, each named after the acceptance criterion it covers (e.g. `f15_ac9_…`) in the [spec](docs/SPEC.md) |
-| Headless UI tests | iced's simulator clicks and types into the real views; 22 byte-exact screenshot tests catch visual regressions |
+| Unit and integration tests | 691 tests, each named after the acceptance criterion it covers (e.g. `f15_ac9_…`) in the [spec](docs/SPEC.md) |
+| Headless UI tests | iced's simulator clicks and types into the real views; 24 byte-exact screenshot tests catch visual regressions |
 | End-to-end | Real HTTP against local mock servers (wiremock), including the CLI binary |
 | Property-based tests | proptest for URL/params sync, variables, cookies, cURL round-trips |
-| Fuzzing | 7 cargo-fuzz targets; findings such as unbounded JSON nesting and variable-expansion blow-ups are fixed with regression tests |
+| Fuzzing | 8 cargo-fuzz targets; findings such as unbounded JSON nesting and variable-expansion blow-ups are fixed with regression tests |
 | Mutation testing | cargo-mutants on every change and nightly over the whole codebase in 8 parallel shards; any surviving mutant needs a new test |
 | Coverage floors | core, app and store must stay at 90 % or more (currently 92–99 %) |
 | Performance budgets | Idle memory, startup time, frame time while scrolling a 50 MB body, and binary size, measured on all three OSes |

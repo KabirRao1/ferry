@@ -1,6 +1,6 @@
 # Ferry: project overview
 
-One-page summary of what Ferry is, how it is built and how it is verified. Details live in the linked docs; numbers here are as of Phase 4 (2026-10-20) and are updated at each phase.
+One-page summary of what Ferry is, how it is built and how it is verified. Details live in the linked docs; numbers here are as of Phase 5 in progress (2026-10-29) and are updated at each phase.
 
 ## What it is
 
@@ -17,7 +17,8 @@ Ferry is a native desktop API client with Postman's layout and Postman's local f
 | Activity | History of the last 100 sends; an RFC 6265 cookie jar with a manager; a console logging every request as sent |
 | Scripts | Pre-request and post-response JavaScript on requests, folders and collections with Postman's `pm` API (`pm.test`, Chai-style `pm.expect`, `pm.response`, `pm.request`, variables, `pm.sendRequest`, `pm.visualizer`); Test Results tab; Visualize view rendering Handlebars templates |
 | Automation | Collection Runner (iterations, delay, CSV/JSON data files, `setNextRequest`, live results, JSON report) and `ferry-cli run` for CI with exit codes |
-| Next (Phase 5) | cURL / Postman / OpenAPI / HAR import and export, code snippets in 12 languages, advanced auth (OAuth 2.0 with PKCE, AWS SigV4, Digest, NTLM, JWT, …), proxy and certificates, an OS-keychain vault |
+| Import, export, code | Postman collections (v2.0 and v2.1) and environments imported with a list of anything not carried over, and exported as Postman v2.1 without secrets; cURL commands pasted into the URL bar; the current request as code in 12 languages (cURL, HTTPie, Python, JavaScript, Node.js, Go, Rust, Java, C#, PHP, Ruby, Swift) |
+| Next (Phase 5) | OpenAPI / Swagger / HAR import, advanced auth (OAuth 2.0 with PKCE, AWS SigV4, Digest, NTLM, JWT, …), proxy and certificates, an OS-keychain vault |
 
 The full plan is in [SPEC.md](SPEC.md) (every acceptance criterion has an ID) and [FEATURES.md](FEATURES.md).
 
@@ -40,6 +41,7 @@ Key techniques, each recorded as a decision in [DECISIONS.md](DECISIONS.md) (53 
 
 - **Elm architecture with injected effects**: `update()` never does I/O or reads the clock; time and randomness are injected (`Ambient`), so behavior is deterministic in tests.
 - **Large bodies without large memory**: a line index over the raw bytes and a virtualized view render only visible lines; filtering and search run off the UI thread with job ids that drop stale results.
+- **Round-trip testing for formats**: the cURL generator is checked by parsing its output back, and Postman export by importing it again, with property tests over random requests and over Postman-shaped JSON with wrong-typed fields.
 - **Git-friendly storage**: one TOML file per request; secret and script-set values go to `*.local.toml` files the workspace's `.gitignore` excludes; all writes are atomic.
 - **Sandboxed scripting**: QuickJS (`rquickjs`) with memory, time and stack limits, an interrupt handler for cancel and timeouts that excludes time spent waiting on `pm.sendRequest`, and a host trait so the script crate never touches the network itself.
 - **Web view isolation**: content served from memory through a custom protocol; navigation, new windows and downloads blocked; scripts off for Preview, and for Visualize scripts on behind a Content Security Policy that blocks all network access.
@@ -49,22 +51,22 @@ Key techniques, each recorded as a decision in [DECISIONS.md](DECISIONS.md) (53 
 
 ## How it is verified
 
-- **646 automated tests**, each named after the acceptance criterion it covers (`f15_ac9_…`): unit, property-based (proptest), headless UI tests with iced's simulator, byte-exact UI snapshot images, and end-to-end tests against local mock servers (wiremock), including the CLI binary.
+- **691 automated tests**, each named after the acceptance criterion it covers (`f15_ac9_…`): unit, property-based (proptest), headless UI tests with iced's simulator, byte-exact UI snapshot images, and end-to-end tests against local mock servers (wiremock), including the CLI binary.
 - **Coverage floors** enforced in CI: core, app and store at 90 % or more (currently 92–99 %).
 - **Mutation testing** with cargo-mutants on every change and nightly over everything (8 parallel shards); surviving mutants become new tests.
-- **Fuzzing** with cargo-fuzz: 7 targets (JSON, body index, params sync, cookies, variables, file formats, scripts), smoke-run in CI.
+- **Fuzzing** with cargo-fuzz: 8 targets (JSON, body index, params sync, cookies, variables, file formats, scripts, imports), smoke-run in CI.
 - **Performance budgets** checked in CI on Windows, macOS and Linux: idle memory within 2× an empty window with 10 tabs open, cold start under 400 ms, 16 ms frame time while scrolling a 50 MB body, and binary size growth limited to 10 % per phase.
 - **Supply chain**: cargo-deny for licenses, advisories and sources.
-- **Findings log**: 20 issues found by these checks and fixed, each with its regression test ([FINDINGS.md](FINDINGS.md)).
+- **Findings log**: 23 issues found by these checks and fixed, each with its regression test ([FINDINGS.md](FINDINGS.md)).
 
 ## Numbers
 
 | | |
 |---|---|
-| Rust source | about 38,000 lines (crates and xtask) |
+| Rust source | about 42,000 lines (crates and xtask), 17,000 of them tests |
 | Crates | 8 |
-| Tests | 646 |
+| Tests | 691 |
 | Decisions (ADRs) | 53 |
-| Findings fixed | 20 |
+| Findings fixed | 23 |
 | Release binary | 15.2 MB on Windows; idle with 10 tabs about 26 MB |
 | CI | Linux, macOS and Windows on every push |
