@@ -299,7 +299,10 @@ proptest! {
 #[test]
 fn f11_ac1_found_by_property_tests() {
     // A short option whose letter is more than one byte long.
-    assert_eq!(parse("curl -é https://a.test").unwrap().url, "https://a.test");
+    assert_eq!(
+        parse("curl -é https://a.test").unwrap().url,
+        "https://a.test"
+    );
     // `--data-raw` never reads a file.
     let d = parse("curl https://a.test --data-raw @x").unwrap();
     assert_eq!((d.body.mode, d.body.raw.as_str()), (BodyMode::Raw, "@x"));

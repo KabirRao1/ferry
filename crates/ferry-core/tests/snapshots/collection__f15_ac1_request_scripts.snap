@@ -1,8 +1,13 @@
 ---
 source: crates/ferry-core/tests/collection.rs
+assertion_line: 911
 expression: text
 ---
 name = "Create user"
+description = """
+Creates a user.
+
+Needs an admin token."""
 method = "POST"
 url = "{{base}}/users?page=2"
 

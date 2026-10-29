@@ -171,6 +171,10 @@ fn rich_request() -> RequestFile {
     }];
     RequestFile {
         name: "Create user".into(),
+        description: "Creates a user.
+
+Needs an admin token."
+            .into(),
         request: request.clone(),
         examples: vec![
             Example {
@@ -203,6 +207,7 @@ fn f09_ac2_request_file_format() {
 fn f09_ac2_minimal_request_file_omits_defaults() {
     let file = RequestFile {
         name: "Ping".into(),
+        description: String::new(),
         request: RequestDraft {
             url: "https://a.test/".into(),
             ..RequestDraft::default()
@@ -304,6 +309,7 @@ fn f32_ac2_bodies_are_text_or_base64() {
 fn f32_ac2_empty_example_body() {
     let file = RequestFile {
         name: "r".into(),
+        description: String::new(),
         request: RequestDraft::default(),
         examples: vec![Example {
             name: "e".into(),
@@ -383,6 +389,7 @@ proptest! {
     ) {
         let file = RequestFile {
             name: name.clone(),
+            description: String::new(),
             request: request.clone(),
             examples: vec![Example {
                 name,
@@ -601,6 +608,7 @@ fn request(path: &str, name: &str, url: &str, auth: AuthKind) -> Item {
         path: path.into(),
         node: Node::Request(RequestFile {
             name: name.into(),
+            description: String::new(),
             request: RequestDraft {
                 url: url.into(),
                 auth: AuthDraft {

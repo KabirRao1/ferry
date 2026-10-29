@@ -659,12 +659,13 @@ impl App {
                     });
                     return None;
                 };
-                let examples = ws
+                let (description, examples) = ws
                     .request(&link)
-                    .map(|f| f.examples.clone())
+                    .map(|f| (f.description.clone(), f.examples.clone()))
                     .unwrap_or_default();
                 let contents = collection::write_request(&RequestFile {
                     name: tab.title().to_owned(),
+                    description,
                     request: tab.draft.clone(),
                     examples,
                 });
@@ -805,6 +806,7 @@ impl App {
         };
         let contents = collection::write_request(&RequestFile {
             name: name.clone(),
+            description: String::new(),
             request: request.clone(),
             examples: Vec::new(),
         });
@@ -955,6 +957,7 @@ impl App {
             path: path.clone(),
             contents: collection::write_request(&RequestFile {
                 name: name.to_owned(),
+                description: String::new(),
                 request: tab.draft.clone(),
                 examples: Vec::new(),
             }),

@@ -1,9 +1,13 @@
 ---
 source: crates/ferry-core/tests/collection.rs
-assertion_line: 178
+assertion_line: 202
 expression: write_request(&rich_request())
 ---
 name = "Create user"
+description = """
+Creates a user.
+
+Needs an admin token."""
 method = "POST"
 url = "{{base}}/users?page=2"
 

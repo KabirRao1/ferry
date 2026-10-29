@@ -133,6 +133,7 @@ impl H {
 fn request_file(name: &str, url: &str) -> String {
     collection::write_request(&collection::RequestFile {
         name: name.into(),
+        description: String::new(),
         request: RequestDraft {
             url: url.into(),
             ..RequestDraft::default()
@@ -1162,6 +1163,7 @@ fn with_examples(fs: &MemFs) {
     };
     let file = collection::RequestFile {
         name: "Health".into(),
+        description: String::new(),
         request: RequestDraft {
             url: "{{base}}/health".into(),
             ..RequestDraft::default()

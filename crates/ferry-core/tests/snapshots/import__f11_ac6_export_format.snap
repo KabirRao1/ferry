@@ -1,0 +1,346 @@
+---
+source: crates/ferry-core/tests/import.rs
+assertion_line: 365
+expression: export_collection(&c)
+---
+{
+  "auth": {
+    "bearer": [
+      {
+        "key": "token",
+        "type": "string",
+        "value": "{{token}}"
+      }
+    ],
+    "type": "bearer"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "console.log(\"start\");"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "info": {
+    "description": "Charges, refunds and customers.",
+    "name": "Payments API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "auth": {
+        "basic": [
+          {
+            "key": "username",
+            "type": "string",
+            "value": "ada"
+          },
+          {
+            "key": "password",
+            "type": "string",
+            "value": "s3cret"
+          }
+        ],
+        "type": "basic"
+      },
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.environment.set(\"token\", pm.response.json().token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Log in",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"user\": \"ada\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Returns a token.",
+            "header": [
+              {
+                "disabled": true,
+                "key": "X-Trace",
+                "value": "on"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "login"
+              ],
+              "raw": "{{baseUrl}}/login"
+            }
+          },
+          "response": [
+            {
+              "body": "{\"token\":\"t-1\"}",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "name": "Success",
+              "originalRequest": {
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"user\":\"ada\"}"
+                },
+                "header": [],
+                "method": "POST",
+                "url": {
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "login"
+                  ],
+                  "raw": "{{baseUrl}}/login"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "name": "Auth"
+    },
+    {
+      "item": [
+        {
+          "name": "List charges",
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false,
+            "strictSSL": false
+          },
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "charges"
+              ],
+              "query": [
+                {
+                  "description": "At most 100.",
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "disabled": true,
+                  "key": "status",
+                  "value": "paid"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{cursor}}"
+                }
+              ],
+              "raw": "{{baseUrl}}/charges?limit=10&cursor={{cursor}}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create charge",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "amount",
+                  "value": "500"
+                },
+                {
+                  "description": "Defaults to usd.",
+                  "disabled": true,
+                  "key": "currency",
+                  "value": "usd"
+                }
+              ]
+            },
+            "header": [],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "charges"
+              ],
+              "raw": "{{baseUrl}}/charges"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload receipt",
+          "request": {
+            "body": {
+              "formdata": [
+                {
+                  "key": "note",
+                  "type": "text",
+                  "value": "March"
+                },
+                {
+                  "key": "receipt",
+                  "src": "/home/ada/receipt.pdf",
+                  "type": "file",
+                  "value": ""
+                },
+                {
+                  "key": "empty",
+                  "type": "text",
+                  "value": ""
+                }
+              ],
+              "mode": "formdata"
+            },
+            "header": [],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "charges",
+                ":id",
+                "receipt"
+              ],
+              "raw": "{{baseUrl}}/charges/:id/receipt"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Import charges",
+          "request": {
+            "body": {
+              "file": {
+                "src": "/home/ada/charges.csv"
+              },
+              "mode": "file"
+            },
+            "header": [],
+            "method": "POST",
+            "url": {
+              "host": [
+                "api",
+                "pay",
+                "test"
+              ],
+              "path": [
+                "v1",
+                "import"
+              ],
+              "port": "8443",
+              "protocol": "https",
+              "query": [
+                {
+                  "key": "dry",
+                  "value": "1"
+                }
+              ],
+              "raw": "https://api.pay.test:8443/v1/import?dry=1"
+            }
+          },
+          "response": []
+        }
+      ],
+      "name": "Charges"
+    },
+    {
+      "name": "Charge graph",
+      "request": {
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"query\": \"query { charges { id } }\",\n  \"variables\": {\n    \"first\": 2\n  }\n}"
+        },
+        "header": [],
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "graphql"
+          ],
+          "raw": "{{baseUrl}}/graphql"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Health",
+      "request": {
+        "header": [],
+        "method": "GET",
+        "url": {
+          "host": [
+            "api",
+            "pay",
+            "test"
+          ],
+          "path": [
+            "health"
+          ],
+          "protocol": "https",
+          "raw": "https://api.pay.test/health"
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.pay.test"
+    },
+    {
+      "key": "apiKey",
+      "type": "secret",
+      "value": ""
+    },
+    {
+      "disabled": true,
+      "key": "old",
+      "value": "x"
+    }
+  ]
+}

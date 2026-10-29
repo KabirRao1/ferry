@@ -63,6 +63,8 @@ pub(crate) fn toml_error(text: &str, error: &toml::de::Error) -> FormatError {
 struct RequestRepr {
     #[serde(default)]
     name: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    description: String,
     #[serde(flatten)]
     request: RequestDraft,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -166,6 +168,8 @@ pub struct Example {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RequestFile {
     pub name: String,
+    /// Shown nowhere yet; kept for import and export (F11-AC3).
+    pub description: String,
     pub request: RequestDraft,
     pub examples: Vec<Example>,
 }
@@ -225,6 +229,7 @@ pub fn parse_request(text: &str, fallback_name: &str) -> Result<RequestFile, For
     restore_originals(&mut request);
     Ok(RequestFile {
         name: repr.name.unwrap_or_else(|| fallback_name.to_owned()),
+        description: repr.description,
         request,
         examples: repr
             .examples
@@ -240,6 +245,7 @@ pub fn parse_request(text: &str, fallback_name: &str) -> Result<RequestFile, For
 pub fn write_request(file: &RequestFile) -> String {
     to_toml(&RequestRepr {
         name: Some(file.name.clone()),
+        description: file.description.clone(),
         request: file.request.clone(),
         examples: file
             .examples
@@ -367,6 +373,7 @@ impl fmt::Display for ItemKind {
 // CONTRACT
 /// What an item's file holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // a few hundred bytes per tree item
 pub enum Node {
     Collection(CollectionFile),
     Folder(FolderFile),

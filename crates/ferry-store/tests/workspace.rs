@@ -29,6 +29,7 @@ fn put(fs: &MemFs, rel: &str, text: &str) {
 fn request_text(name: &str, url: &str) -> String {
     write_request(&RequestFile {
         name: name.into(),
+        description: String::new(),
         request: RequestDraft {
             url: url.into(),
             ..RequestDraft::default()
@@ -571,6 +572,7 @@ fn f09_ac2_real_filesystem_round_trip() {
     s.init().unwrap();
     let file = RequestFile {
         name: "Get user".into(),
+        description: String::new(),
         request: RequestDraft {
             url: "{{base}}/users/1".into(),
             ..RequestDraft::default()

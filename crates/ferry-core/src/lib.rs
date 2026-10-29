@@ -15,6 +15,7 @@ pub mod environment;
 pub mod error;
 pub mod format;
 pub mod history;
+pub mod import;
 pub mod json;
 pub mod kv;
 pub mod names;

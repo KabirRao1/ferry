@@ -63,3 +63,9 @@ path = "fuzz_targets/script.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "import"
+path = "fuzz_targets/import.rs"
+test = false
+doc = false
