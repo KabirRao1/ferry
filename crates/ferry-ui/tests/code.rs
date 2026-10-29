@@ -1,7 +1,7 @@
 //! The Code panel (F19-AC1) and pasted cURL errors (F11-AC1) in the UI.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code
 
-use ferry_app::{App, Client, Config, Edit, Language, Message as AppMessage};
+use ferry_app::{App, Client, Config, Edit, Message as AppMessage};
 use ferry_ui::screen::TEXT;
 use ferry_ui::shell::{Message, Shell};
 use iced::{Settings, Size};
@@ -89,7 +89,9 @@ fn f11_ac1_curl_errors_show_under_the_url() {
 #[test]
 fn f19_ac1_snapshot_code_panel() {
     let mut app = with_code();
-    app.update(AppMessage::CodeLanguage(Language::PythonRequests));
+    app.update(AppMessage::CodeLanguage(
+        ferry_app::Language::PythonRequests,
+    ));
     let shell = shell_for(app);
     let mut ui = sim(&shell);
     let snap = ui.snapshot(&ferry_ui::theme::theme()).unwrap();
