@@ -102,7 +102,7 @@ cd ferry
 cargo run --release
 ```
 
-The first build takes a few minutes. Try `https://httpbin.org/json` in the URL bar and press **Ctrl+Enter**. To run the tests: `cargo test --workspace`; to run the full merge gate: `cargo xtask gate`.
+The first build takes a few minutes. Try `https://httpbin.org/json` in the URL bar and press **Ctrl+Enter**, or press **Import** and choose [`docs/demo/Ferry Demo.postman_collection.json`](docs/demo/Ferry%20Demo.postman_collection.json) for a small collection with tests you can send one by one or run with **Run** in its `…` menu. To run the tests: `cargo test --workspace`; to run the full merge gate: `cargo xtask gate`.
 
 ## Roadmap
 

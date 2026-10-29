@@ -690,3 +690,14 @@ proptest! {
         let _ = import(&format!("{{\"info\":{{}},\"item\":[{text}]}}"));
     }
 }
+
+/// The collection the README offers for a first try imports completely.
+#[test]
+fn f11_ac3_the_demo_collection_imports_completely() {
+    let (c, skipped) = collection(include_str!(
+        "../../../docs/demo/Ferry Demo.postman_collection.json"
+    ));
+    assert_eq!(skipped, Vec::<String>::new());
+    assert_eq!(c.file.name, "Ferry Demo");
+    assert_eq!(c.counts(), (3, 1));
+}

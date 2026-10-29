@@ -1,0 +1,103 @@
+{
+	"info": {
+		"name": "Ferry Demo",
+		"description": "A short tour of Ferry against JSONPlaceholder, a free fake REST API. Import it, send each request, then run the whole collection.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://jsonplaceholder.typicode.com"
+		}
+	],
+	"item": [
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "List users",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"ten users\", () => pm.expect(pm.response.json()).to.have.lengthOf(10));",
+									"pm.collectionVariables.set(\"userId\", pm.response.json()[0].id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/users"
+					}
+				},
+				{
+					"name": "Posts by user",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"every post belongs to the user\", () => {",
+									"  const id = Number(pm.collectionVariables.get(\"userId\"));",
+									"  pm.response.json().forEach(p => pm.expect(p.userId).to.equal(id));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/posts?userId={{userId}}",
+							"query": [
+								{
+									"key": "userId",
+									"value": "{{userId}}",
+									"description": "Set by the List users test."
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Create post",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"created\", () => pm.response.to.have.status(201));",
+							"pm.test(\"echoes the title\", () => pm.expect(pm.response.json().title).to.equal(\"Hello from Ferry\"));"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"title\": \"Hello from Ferry\",\n  \"body\": \"Sent from a native Rust API client.\",\n  \"userId\": 1\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "{{baseUrl}}/posts"
+			}
+		}
+	]
+}
