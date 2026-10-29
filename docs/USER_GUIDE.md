@@ -55,7 +55,7 @@ Scripts run in a sandbox with no file, process or network access (apart from `pm
 
 ## Import and export
 
-**Import** in the Collections or Environments header opens the Import dialog. Choose a file or paste text: a Postman collection (v2.0 or v2.1), a Postman environment, or a cURL command. A collection becomes a new collection in your workspace with its folders, requests, scripts, variables, auth and saved responses; an environment becomes a new environment, with secret values in its local file; a cURL command opens in a new tab. The dialog then lists anything Ferry could not carry over, such as an auth type it does not have yet. If the file cannot be read as a whole, nothing is written.
+**Import**, next to the workspace name at the top of the window, opens the Import dialog. Choose a file or paste text: a Postman collection (v2.0 or v2.1), a Postman environment, or a cURL command. A collection becomes a new collection in your workspace with its folders, requests, scripts, variables, auth and saved responses; an environment becomes a new environment, with secret values in its local file; a cURL command opens in a new tab. The dialog then lists anything Ferry could not carry over, such as an auth type it does not have yet. If the file cannot be read as a whole, nothing is written.
 
 **Export…** in a collection's or environment's `…` menu saves it as a Postman file that Postman, and Ferry, can import again. Secret values and values only in local files are not exported.
 

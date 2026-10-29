@@ -59,6 +59,11 @@ pub fn header(state: &App) -> Element<'_, Message> {
             .style(theme::dialog),
         tooltip::Position::Bottom,
     );
+    // Import (F11-AC2): here rather than in the narrow sidebar panels.
+    let import = button(text(crate::sidebar::IMPORT).size(TEXT))
+        .on_press(app(AppMessage::OpenImport))
+        .padding([4, 10])
+        .style(theme::secondary);
     let mut search = row![
         text_input(SEARCH_PLACEHOLDER, state.search())
             .id(iced::widget::Id::new(SEARCH_INPUT))
@@ -90,6 +95,7 @@ pub fn header(state: &App) -> Element<'_, Message> {
         row![
             text("Ferry").size(15).font(bold()).style(theme::accent),
             workspace,
+            import,
             space().width(Fill),
             search,
             space().width(Fill),

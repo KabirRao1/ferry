@@ -23,7 +23,7 @@ const INDENT: f32 = 14.0;
 pub const NO_COLLECTIONS: &str = "No collections yet";
 pub const NEW_COLLECTION: &str = "New Collection";
 pub const NEW_ENVIRONMENT: &str = "New Environment";
-/// Opens the Import dialog (F11-AC2).
+/// Opens the Import dialog, in the header (F11-AC2).
 pub const IMPORT: &str = "Import";
 /// Writes a collection or environment as a Postman file (F11-AC6).
 pub const EXPORT: &str = "Export…";
@@ -76,24 +76,11 @@ pub fn view(state: &App) -> Element<'_, Message> {
         .into()
 }
 
-/// The panel title with optional Import (F11-AC2) and New actions.
-fn panel_header<'a>(
-    title: &'a str,
-    import: bool,
-    add: Option<(Message, &'a str)>,
-) -> Element<'a, Message> {
+/// The panel title with an optional `+` action.
+fn panel_header<'a>(title: &'a str, add: Option<(Message, &'a str)>) -> Element<'a, Message> {
     let mut header = row![text(title).size(TEXT).font(bold()), space().width(Fill)]
-        .spacing(6)
         .align_y(Alignment::Center)
         .padding([8, 10]);
-    if import {
-        header = header.push(
-            button(text(IMPORT).size(SMALL))
-                .on_press(app(AppMessage::OpenImport))
-                .padding([2, 8])
-                .style(theme::secondary),
-        );
-    }
     if let Some((message, hint)) = add {
         header = header.push(tooltip(
             button(text("New").size(SMALL))
@@ -114,7 +101,6 @@ fn panel_header<'a>(
 fn collections(state: &App) -> Element<'_, Message> {
     let header = panel_header(
         "Collections",
-        true,
         Some((app(AppMessage::NewCollection), NEW_COLLECTION)),
     );
     let items = &state.workspace().collections;
@@ -353,7 +339,6 @@ fn example_row<'a>(
 fn environments(state: &App) -> Element<'_, Message> {
     let header = panel_header(
         "Environments",
-        true,
         Some((app(AppMessage::NewEnvironment), NEW_ENVIRONMENT)),
     );
     let mut rows: Vec<Element<'_, Message>> = vec![env_row(
@@ -543,7 +528,7 @@ fn history_row(entry: &ferry_app::HistoryEntry) -> Element<'_, Message> {
 
 fn search_results(state: &App) -> Element<'_, Message> {
     let hits = state.search_hits();
-    let header = panel_header("Search results", false, None);
+    let header = panel_header("Search results", None);
     if hits.is_empty() {
         return column![
             header,

@@ -65,17 +65,10 @@ fn dialog_text(shell: &Shell) -> String {
 }
 
 #[test]
-fn f11_ac2_import_buttons_open_the_dialog() {
-    let shell = shell_for(workspace_app());
-    let got = clicked(&shell, IMPORT);
-    assert!(
-        matches!(got.as_slice(), [AppMessage::OpenImport]),
-        "{got:?}"
-    );
+fn f11_ac2_import_button_opens_the_dialog() {
+    // In the header, so it is there with the sidebar hidden too.
     let mut app = workspace_app();
-    app.update(AppMessage::SidebarSection(
-        ferry_app::SidebarSection::Environments,
-    ));
+    app.update(AppMessage::ToggleSidebar);
     let got = clicked(&shell_for(app), IMPORT);
     assert!(
         matches!(got.as_slice(), [AppMessage::OpenImport]),
