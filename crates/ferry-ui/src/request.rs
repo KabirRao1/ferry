@@ -89,6 +89,10 @@ fn title_row<'a>(app_state: &'a App, tab: &'a Tab) -> Element<'a, Message> {
     }
     row![
         container(crumbs).width(Fill).clip(true),
+        button(text("</>").size(TEXT).font(iced::Font::MONOSPACE))
+            .on_press(app(AppMessage::ToggleCode))
+            .padding([5, 10])
+            .style(theme::flat(app_state.code_open())),
         button(text("Save").size(TEXT))
             .on_press(app(AppMessage::Save))
             .padding([5, 14])
@@ -195,6 +199,9 @@ fn url_bar<'a>(tab: &'a Tab, editors: &'a Editors) -> Element<'a, Message> {
     ];
     if let Some(error) = &tab.method_error {
         bar = bar.push(text(error.to_string()).size(SMALL).style(theme::error));
+    }
+    if let Some(error) = &tab.curl_error {
+        bar = bar.push(text(error.as_str()).size(SMALL).style(theme::error));
     }
     bar.spacing(4).into()
 }

@@ -344,6 +344,8 @@ pub struct Tab {
     /// Text of the method field, which may be a half-typed method.
     pub method_text: String,
     pub method_error: Option<MethodError>,
+    /// Why a pasted cURL command could not be read (F11-AC1).
+    pub curl_error: Option<String>,
     /// Bulk-edit text per table, while in bulk mode.
     pub bulk: Vec<(Table, String)>,
     pub show_auto_headers: bool,
@@ -379,6 +381,7 @@ impl Tab {
             bulk: Vec::new(),
             show_auto_headers: false,
             json_error: None,
+            curl_error: None,
             raw_revision: 0,
             link: None,
             name: None,
@@ -459,6 +462,12 @@ impl Tab {
         if self.doc != Doc::Request {
             return doc::edit(&mut self.doc, edit);
         }
+        if let Edit::Url(text) = &edit
+            && ferry_core::curl::is_curl(text)
+        {
+            return self.paste_curl(text);
+        }
+        self.curl_error = None;
         let before = self.draft.clone();
         let d = &mut self.draft;
         match edit {
@@ -523,6 +532,29 @@ impl Tab {
         }
         self.refresh_json_error();
         self.draft != before
+    }
+
+    /// Replace the request with a pasted cURL command (F11-AC1); its
+    /// scripts stay. On failure the request is left as it was.
+    fn paste_curl(&mut self, text: &str) -> bool {
+        match ferry_core::curl::parse(text) {
+            Ok(mut parsed) => {
+                parsed.scripts = std::mem::take(&mut self.draft.scripts);
+                let changed = parsed != self.draft;
+                self.method_text = parsed.method.to_string();
+                self.method_error = None;
+                self.draft = parsed;
+                self.bulk.clear();
+                self.raw_revision += 1;
+                self.curl_error = None;
+                self.refresh_json_error();
+                changed
+            }
+            Err(error) => {
+                self.curl_error = Some(error.to_string());
+                false
+            }
+        }
     }
 
     // CONTRACT

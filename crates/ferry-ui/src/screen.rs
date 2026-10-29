@@ -75,7 +75,15 @@ fn workbench<'a>(app: &'a App, editors: &'a Editors, resizing: bool) -> Element<
         .on_press(Message::ResizeStart)
         .interaction(mouse::Interaction::ResizingVertically);
         let tabs = chrome::tab_strip(app);
-        let content = column![tabs, hline(), request, divider, response].height(Fill);
+        let stack = column![request, divider, response].height(Fill);
+        let body: Element<'a, Message> = if app.code_open() {
+            row![stack, vline(), crate::code::view(app)]
+                .height(Fill)
+                .into()
+        } else {
+            stack.into()
+        };
+        let content = column![tabs, hline(), body].height(Fill);
         let tabs_height = chrome::TAB_STRIP_HEIGHT + 1.0;
         if resizing {
             // Only while dragging the divider: track the pointer anywhere in

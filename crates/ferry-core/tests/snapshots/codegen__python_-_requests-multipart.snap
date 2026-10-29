@@ -5,8 +5,7 @@ expression: lang.generate(&s)
 import requests
 
 url = "https://api.test/upload"
-headers = {
-}
+headers = {}
 files = [
     ("title", (None, "Holiday")),
     ("photo", ("beach.jpg", open("/home/ada/pics/beach.jpg", "rb"))),

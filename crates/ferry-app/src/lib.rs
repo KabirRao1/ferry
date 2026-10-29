@@ -7,6 +7,7 @@ mod activity;
 mod ambient;
 mod app;
 pub mod body_view;
+mod code;
 pub mod console;
 mod doc;
 mod find;
@@ -22,12 +23,14 @@ pub use activity::{CookieEditor, CookieManager, Pending, TRUNCATED_NOTE, history
 pub use ambient::{Ambient, Clock, FixedAmbient, SystemAmbient};
 pub use app::{App, Effect, Finished, Message, SidebarSection, WRAP_BYTES, received, run};
 pub use bytes::Bytes;
+pub use code::NOT_A_REQUEST;
 pub use doc::{
     ContainerDoc, ContainerFields, ContainerSection, Doc, EnvDoc, EnvTarget, ExampleDoc,
     ExampleFields, VarEdit, apply_var,
 };
 pub use ferry_core::auth::{ApiKeyLocation, AuthDraft, AuthKind};
 pub use ferry_core::body::{BodyMode, RawLanguage};
+pub use ferry_core::codegen::Language;
 pub use ferry_core::collection::{
     self as collection, AuthSource, CollectionFile, Example, FolderFile, Hit, Item, ItemKind, Node,
     RequestFile,

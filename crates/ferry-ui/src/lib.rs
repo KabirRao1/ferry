@@ -5,6 +5,7 @@
 
 pub mod body_view;
 pub mod chrome;
+pub mod code;
 pub mod console;
 pub mod dialogs;
 pub mod docs;

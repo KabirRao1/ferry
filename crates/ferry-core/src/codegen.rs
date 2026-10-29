@@ -91,7 +91,10 @@ pub fn snippet(request: &Request, draft: &RequestDraft) -> Snippet {
 
 // CONTRACT
 /// The languages, in menu order (F19-AC2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum Language {
     #[default]
     Curl,
@@ -377,11 +380,15 @@ fn httpie(s: &Snippet) -> String {
 fn python(s: &Snippet) -> String {
     let mut out = String::from("import requests\n\n");
     let _ = writeln!(out, "url = {}", python_str(&s.url));
-    out.push_str("headers = {\n");
-    for (k, v) in &s.headers {
-        let _ = writeln!(out, "    {}: {},", python_str(k), python_str(v));
+    if s.headers.is_empty() {
+        out.push_str("headers = {}\n");
+    } else {
+        out.push_str("headers = {\n");
+        for (k, v) in &s.headers {
+            let _ = writeln!(out, "    {}: {},", python_str(k), python_str(v));
+        }
+        out.push_str("}\n");
     }
-    out.push_str("}\n");
     let mut args = vec![
         python_str(&s.method),
         "url".to_owned(),

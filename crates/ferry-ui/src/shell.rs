@@ -330,6 +330,7 @@ impl Shell {
                 }
                 None => Task::none(),
             },
+            Effect::CopyText(text) => iced::clipboard::write(text),
             Effect::PickDataFile { tab } => {
                 Task::perform(load_data_file(), move |picked| match picked {
                     Some((path, result)) => {

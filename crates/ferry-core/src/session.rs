@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::codegen::Language;
 use crate::draft::RequestDraft;
 
 // CONTRACT
@@ -43,6 +44,9 @@ pub struct Session {
     /// The workspace folder chosen with `Open Workspace…` (F09-AC1).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<PathBuf>,
+    /// The Code panel's language (F19-AC1).
+    #[serde(skip_serializing_if = "crate::is_default")]
+    pub code_language: Language,
 }
 
 impl Session {
@@ -64,6 +68,7 @@ impl Default for Session {
             split: Self::DEFAULT_SPLIT,
             environment: None,
             workspace: None,
+            code_language: Language::default(),
         }
     }
 }

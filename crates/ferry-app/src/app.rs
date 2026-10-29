@@ -101,6 +101,11 @@ pub enum Message {
     ResponseTabSelected(ResponseTab),
     /// Show the pre-request or post-response script (F15-AC1).
     ScriptPhaseSelected(ScriptPhase),
+    /// Open or close the Code panel (F19-AC1).
+    ToggleCode,
+    CodeLanguage(ferry_core::codegen::Language),
+    /// Copy the Code panel's text.
+    CopyCode,
     /// Narrow the Test Results list (F15-AC10).
     TestFilterSelected(TestFilter),
     BodyFormatSelected(BodyFormat),
@@ -323,6 +328,8 @@ pub enum Effect {
         name: String,
         contents: String,
     },
+    /// Put text on the clipboard.
+    CopyText(String),
     SaveSession(Session),
     /// Show a file dialog, then report [`Message::FilePicked`].
     PickFile {
@@ -425,6 +432,9 @@ pub struct App {
     /// An embedded web view can show previews (F22-AC3).
     pub(crate) preview_available: bool,
     pub(crate) preview_error: Option<String>,
+    /// The Code panel (F19-AC1).
+    pub(crate) code_open: bool,
+    pub(crate) code_language: ferry_core::codegen::Language,
 }
 
 impl Default for App {
@@ -458,6 +468,8 @@ impl App {
             workspace_root: session.workspace.clone(),
             workspace_dir: session.workspace,
             environment: session.environment,
+            code_open: false,
+            code_language: session.code_language,
             expanded: BTreeSet::new(),
             search: String::new(),
             dialog: None,
@@ -553,6 +565,7 @@ impl App {
             split: self.split,
             environment: self.environment.clone(),
             workspace: self.workspace_dir.clone(),
+            code_language: self.code_language,
             ..Session::default()
         }
     }
@@ -745,6 +758,16 @@ impl App {
             Message::RequestTabSelected(t) => self.tab_mut().request_tab = t,
             Message::ResponseTabSelected(t) => self.tab_mut().response_tab = t,
             Message::ScriptPhaseSelected(p) => self.tab_mut().script_phase = p,
+            Message::ToggleCode => self.code_open = !self.code_open,
+            Message::CodeLanguage(language) => {
+                self.code_language = language;
+                self.session_changed = true;
+            }
+            Message::CopyCode => {
+                if let Ok(code) = self.code() {
+                    return Some(Effect::CopyText(code));
+                }
+            }
             Message::TestFilterSelected(f) => self.tab_mut().test_filter = f,
             Message::BodyFormatSelected(f) => {
                 self.tab_mut().select_format(f);
