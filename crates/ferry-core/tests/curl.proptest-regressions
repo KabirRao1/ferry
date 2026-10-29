@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 897915703fddc3768213b4ed5dc4089069bba8fad915628366a2eab02cf47171 # shrinks to rest = "-𛅤"
+cc 63b83eb32d05f951c9f6dd53253481eb8a43a6247c257a27fe4120b787e3b77f # shrinks to d = RequestDraft { method: Get, url: "https://api.test", params: [], headers: [KeyValue { key: "A", value: "!^\"", description: "", enabled: true }], body: BodyDraft { mode: None, raw: "", language: Text, urlencoded: [], form: [], binary: None }, auth: AuthDraft { kind: None, username: "", password: "", token: "", key: "", value: "", location: Header }, options: SendOptions { follow_redirects: false, verify_tls: false, cookies: true }, scripts: Scripts { pre_request: "", post_response: "" } }
+cc 09200df1f03459c3d6d1841a23b9adb8d506744b7f8d607b7632e407bcaadacb # shrinks to d = RequestDraft { method: Get, url: "https://api.test", params: [], headers: [], body: BodyDraft { mode: Raw, raw: "@", language: Json, urlencoded: [], form: [], binary: None }, auth: AuthDraft { kind: None, username: "", password: "", token: "", key: "", value: "", location: Header }, options: SendOptions { follow_redirects: false, verify_tls: false, cookies: true }, scripts: Scripts { pre_request: "", post_response: "" } }
+cc 9cf3d0a68cb701acdcc2b7d24ca7b17b7f9069df38c01066207745e673edbf82 # shrinks to d = RequestDraft { method: Get, url: "https://api.test", params: [], headers: [KeyValue { key: "A", value: "'", description: "", enabled: true }, KeyValue { key: "a", value: "A^\"A", description: "", enabled: true }], body: BodyDraft { mode: None, raw: "", language: Text, urlencoded: [], form: [], binary: None }, auth: AuthDraft { kind: None, username: "", password: "", token: "", key: "", value: "", location: Header }, options: SendOptions { follow_redirects: false, verify_tls: false, cookies: true }, scripts: Scripts { pre_request: "", post_response: "" } }

@@ -38,12 +38,34 @@ pub fn is_curl(text: &str) -> bool {
 
 /// Split a command into words: Windows `cmd` text (carets) or POSIX shell.
 fn words(text: &str) -> Result<Vec<String>, CurlError> {
-    let cmd = text.contains("^\n") || text.contains("^\r\n") || text.contains("^\"");
-    if cmd {
+    if is_cmd(text) {
         Ok(windows_words(&strip_carets(text)))
     } else {
         posix_words(text)
     }
+}
+
+/// Whether the text is in `cmd` style: a caret before a line break, or a
+/// caret-quote `^"` outside what a POSIX shell would read as quoted or
+/// escaped.
+fn is_cmd(text: &str) -> bool {
+    if text.contains("^\n") || text.contains("^\r\n") {
+        return true;
+    }
+    let (mut single, mut double) = (false, false);
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !double => single = !single,
+            '"' if !single => double = !double,
+            '\\' if !single => {
+                chars.next();
+            }
+            '^' if !single && !double && chars.peek() == Some(&'"') => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// `cmd` escapes: `^` before a line break continues the line, before
@@ -140,6 +162,9 @@ fn posix_words(text: &str) -> Result<Vec<String>, CurlError> {
                     started = true;
                 }
             },
+            // A continuation whose line break was lost: one-line text
+            // fields drop line breaks from pasted text.
+            '\\' if !cmd && !started && matches!(chars.peek(), Some(' ' | '\t')) => {}
             '\\' if !cmd => match chars.next() {
                 Some('\r') => {
                     if chars.peek() == Some(&'\n') {
@@ -321,8 +346,10 @@ const WITH_VALUE: &[&str] = &[
 
 /// A data piece and how curl treats it.
 enum Data {
-    /// `-d`, `--data`, `--data-raw`, `--data-ascii`.
+    /// `-d`, `--data`, `--data-ascii`: `@file` reads a file.
     Plain(String),
+    /// `--data-raw`: never a file.
+    Raw(String),
     Binary(String),
     UrlEncode(String),
     Json(String),
@@ -418,8 +445,12 @@ pub fn parse(text: &str) -> Result<RequestDraft, CurlError> {
         let w = &words[i];
         i += 1;
         // `-Hvalue` and `-XPOST`: a short option with its value attached.
-        let (opt, attached) = if w.len() > 2 && w.starts_with('-') && !w.starts_with("--") {
-            let (o, rest) = w.split_at(2);
+        let after_letter = w.char_indices().nth(2).map(|(at, _)| at);
+        let (opt, attached) = if let Some(at) = after_letter
+            && w.starts_with('-')
+            && !w.starts_with("--")
+        {
+            let (o, rest) = w.split_at(at);
             if WITH_VALUE.contains(&o) {
                 (o.to_owned(), Some(rest.to_owned()))
             } else {
@@ -463,7 +494,8 @@ pub fn parse(text: &str) -> Result<RequestDraft, CurlError> {
                     headers.push(KeyValue::new(k.trim(), ""));
                 }
             }
-            "-d" | "--data" | "--data-raw" | "--data-ascii" => data.push(Data::Plain(value)),
+            "-d" | "--data" | "--data-ascii" => data.push(Data::Plain(value)),
+            "--data-raw" => data.push(Data::Raw(value)),
             "--data-binary" => data.push(Data::Binary(value)),
             "--data-urlencode" => data.push(Data::UrlEncode(value)),
             "--json" => data.push(Data::Json(value)),
@@ -531,7 +563,7 @@ pub fn parse(text: &str) -> Result<RequestDraft, CurlError> {
             .iter()
             .map(|d| match d {
                 Data::UrlEncode(p) => urlencode_piece(p),
-                Data::Plain(p) | Data::Binary(p) | Data::Json(p) => p.clone(),
+                Data::Plain(p) | Data::Raw(p) | Data::Binary(p) | Data::Json(p) => p.clone(),
             })
             .collect();
         url.push(if url.contains('?') { '&' } else { '?' });
@@ -558,7 +590,7 @@ pub fn parse(text: &str) -> Result<RequestDraft, CurlError> {
                             let (k, v) = p.split_once('=').unwrap_or(("", p.as_str()));
                             Some(vec![KeyValue::new(k, v)])
                         }
-                        Data::Plain(p) | Data::Binary(p) => p
+                        Data::Plain(p) | Data::Raw(p) | Data::Binary(p) => p
                             .split('&')
                             .map(|pair| {
                                 pair.split_once('=').map(|(k, v)| {
@@ -580,7 +612,7 @@ pub fn parse(text: &str) -> Result<RequestDraft, CurlError> {
                 .iter()
                 .map(|d| match d {
                     Data::UrlEncode(p) => urlencode_piece(p),
-                    Data::Plain(p) | Data::Binary(p) | Data::Json(p) => p.clone(),
+                    Data::Plain(p) | Data::Raw(p) | Data::Binary(p) | Data::Json(p) => p.clone(),
                 })
                 .collect();
             let text = text.join("&");

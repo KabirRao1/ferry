@@ -148,6 +148,25 @@ fn f11_ac1_quoting_styles() {
     assert_eq!(d.body.raw, "{\"k\":1}");
 }
 
+/// FND-021: pasting into the URL field drops line breaks, which leaves each
+/// continuation as a backslash or caret followed by spaces.
+#[test]
+fn f11_ac1_continuations_without_line_breaks() {
+    let d = parse("curl 'https://a.test/x' \\  -H 'A: b' \\  --data-raw '{\"k\":1}'").unwrap();
+    assert_eq!(d.url, "https://a.test/x");
+    assert_eq!(header(&d, "A").as_deref(), Some("b"));
+    assert_eq!(d.body.raw, "{\"k\":1}");
+    let d = parse("curl ^\"https://a.test/x^\" ^  -H ^\"A: b^\" ^  --data-raw ^\"1^\"").unwrap();
+    assert_eq!(d.url, "https://a.test/x");
+    assert_eq!(header(&d, "A").as_deref(), Some("b"));
+    assert_eq!(d.body.raw, "1");
+    // Inside a word, a backslash still escapes the space.
+    let d = parse("curl https://a.test -H X-A:\\ b").unwrap();
+    assert_eq!(header(&d, "X-A").as_deref(), Some("b"));
+    let d = parse("curl https://a.test -d a\\ b").unwrap();
+    assert_eq!(d.body.raw, "a b");
+}
+
 #[test]
 fn f11_ac1_errors() {
     assert!(is_curl("  curl https://a"));
@@ -261,10 +280,36 @@ proptest! {
         prop_assert_eq!(&rebuilt.headers, &built.headers, "{}", command);
         prop_assert_eq!(&rebuilt.body, &built.body, "{}", command);
         prop_assert_eq!(&rebuilt.options, &built.options, "{}", command);
+        // Pasted into a one-line field, which drops control characters
+        // (FND-021): the same request unless a value had any of its own.
+        if !command.replace(" \\\n", "").chars().any(char::is_control) {
+            let flat: String = command.chars().filter(|c| !c.is_control()).collect();
+            let flat_back = parse(&flat).map_err(|e| TestCaseError::fail(format!("{e}\n{flat}")))?;
+            prop_assert_eq!(&flat_back, &back, "{}", flat);
+        }
     }
 
     #[test]
     fn f11_ac1_prop_parsing_never_panics(rest in "\\PC{0,80}") {
         let _ = parse(&format!("curl {rest}"));
+    }
+}
+
+/// FND-022 and FND-023: inputs the property tests found.
+#[test]
+fn f11_ac1_found_by_property_tests() {
+    // A short option whose letter is more than one byte long.
+    assert_eq!(parse("curl -é https://a.test").unwrap().url, "https://a.test");
+    // `--data-raw` never reads a file.
+    let d = parse("curl https://a.test --data-raw @x").unwrap();
+    assert_eq!((d.body.mode, d.body.raw.as_str()), (BodyMode::Raw, "@x"));
+    let d = parse("curl https://a.test -d @x").unwrap();
+    assert_eq!(d.body.binary.as_deref(), Some(std::path::Path::new("x")));
+    // A caret-quote inside POSIX quotes is not cmd style.
+    for text in [
+        "curl https://a.test -H 'A: ^\"'",
+        "curl https://a.test -H \"A: ^'\" -H 'B: '\''^\"'",
+    ] {
+        assert_eq!(parse(text).unwrap().url, "https://a.test", "{text}");
     }
 }

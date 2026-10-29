@@ -13,7 +13,7 @@
 | F08 | Environments | 3 | done | 63 | 0 |
 | F09 | Collections | 3 | done | 93 | 0 |
 | F10 | History | 3 | done | 28 | 0 |
-| F11 | Import/export | 5 | cURL import done (AC1); Postman import/export next | 9 | 0 |
+| F11 | Import/export | 5 | cURL import done (AC1); Postman import/export next | 11 | 0 |
 | F12 | Settings | 7 | not started | 0 | 0 |
 | F13 | Keyboard | 7 | not started | 0 | 0 |
 | F14 | Workbench layout | 2, 3 (AC6) | done | 13 | 0 |
