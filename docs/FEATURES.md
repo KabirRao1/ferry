@@ -13,7 +13,7 @@
 | F08 | Environments | 3 | done | 63 | 0 |
 | F09 | Collections | 3 | done | 93 | 0 |
 | F10 | History | 3 | done | 28 | 0 |
-| F11 | Import/export | 5 | not started | 0 | 0 |
+| F11 | Import/export | 5 | cURL import done (AC1); Postman import/export next | 9 | 0 |
 | F12 | Settings | 7 | not started | 0 | 0 |
 | F13 | Keyboard | 7 | not started | 0 | 0 |
 | F14 | Workbench layout | 2, 3 (AC6) | done | 13 | 0 |
@@ -21,7 +21,7 @@
 | F16 | Collection Runner and CLI | 4 | done | 32 | 0 |
 | F17 | Cookies | 3 | done | 36 | 0 |
 | F18 | Console | 3 | done | 10 | 0 |
-| F19 | Code snippets | 5 | not started | 0 | 0 |
+| F19 | Code snippets | 5 | done (12 languages, 48 snapshots) | 8 | 0 |
 | F20 | Advanced auth | 5 | not started | 0 | 0 |
 | F21 | Network settings | 5 | not started | 0 | 0 |
 | F22 | Preview and Visualize | 3 (Preview, JSONPath filter), 4 (Visualize), 7 (XPath, extra views) | Preview, filter and Visualize done; XPath and extra body views in Phase 7 (ADR-0041) | 30 | 0 |
