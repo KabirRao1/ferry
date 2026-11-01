@@ -24,7 +24,7 @@ jobs:
           # Oldest supported runner: binaries link against an older glibc and run on more distros.
           - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, archive: tar.gz }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install toolchain and target
         run: rustup target add ${{ matrix.target }}
       - name: Linux build dependencies
@@ -51,7 +51,7 @@ jobs:
             tar czf "$name.tar.gz" "$name"
             echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: ${{ env.ASSET }}
@@ -64,7 +64,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
