@@ -10,7 +10,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 bytes.workspace = true
 memchr = "2"
 mime_guess = { version = "2", default-features = false }
