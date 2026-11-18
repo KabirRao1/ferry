@@ -38,7 +38,7 @@ impl Clock for SystemAmbient {
 
 impl Ambient for SystemAmbient {
     fn utc_offset(&self) -> i32 {
-        chrono::Local::now().offset().local_minus_utc()
+        jiff::ZonedDateTime::now().offset().seconds()
     }
 }
 

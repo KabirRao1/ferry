@@ -16,6 +16,8 @@ fn f08_ac7_the_system_ambient_reads_the_real_world() {
     // Time zones run from UTC-12 to UTC+14.
     let offset = ambient.utc_offset();
     assert!((-12 * 3600..=14 * 3600).contains(&offset), "{offset}");
+    // Every current zone is a whole number of quarter hours from UTC.
+    assert_eq!(offset % 900, 0, "{offset}");
     let values: HashSet<u64> = (0..64).map(|_| ambient.random()).collect();
     assert!(values.len() > 60, "random values repeat: {values:?}");
     assert_eq!(format!("{ambient:?}"), "SystemAmbient");
