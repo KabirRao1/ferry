@@ -1,5 +1,11 @@
 # Prebuilt binaries. Pushing a tag like `v0.1.0` publishes a GitHub Release;
 # running the workflow manually only uploads the build artifacts.
+#
+# Signing (docs/CODE_SIGNING.md): Windows binaries are signed with Azure
+# Artifact Signing and macOS binaries are signed and notarized with an Apple
+# Developer ID, each only when its secrets are set; without them the build
+# still succeeds, unsigned. Every release archive also gets a GitHub build
+# provenance attestation, which needs no secrets.
 name: release
 
 on:
@@ -14,6 +20,9 @@ jobs:
   build:
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    env:
+      WINDOWS_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
+      MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +45,69 @@ jobs:
         run: |
           cargo build --release --locked -p ferry-ui --bin ferry --target ${{ matrix.target }}
           cargo build --release --locked -p ferry-cli --bin ferry-cli --target ${{ matrix.target }}
+      - name: Sign (Windows)
+        if: runner.os == 'Windows' && env.WINDOWS_SIGNING == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+          files: |
+            ${{ github.workspace }}\target\${{ matrix.target }}\release\ferry.exe
+            ${{ github.workspace }}\target\${{ matrix.target }}\release\ferry-cli.exe
+      - name: Verify signatures (Windows)
+        if: runner.os == 'Windows' && env.WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        run: |
+          foreach ($bin in 'ferry.exe', 'ferry-cli.exe') {
+            $sig = Get-AuthenticodeSignature "target/${{ matrix.target }}/release/$bin"
+            "$bin`: $($sig.Status) ($($sig.SignerCertificate.Subject))"
+            if ($sig.Status -ne 'Valid') { exit 1 }
+          }
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS' && env.MACOS_SIGNING == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          dir="target/${{ matrix.target }}/release"
+          mkdir "$RUNNER_TEMP/notarize"
+          for bin in ferry ferry-cli; do
+            codesign --force --options runtime --timestamp --keychain "$keychain" --sign "$IDENTITY" "$dir/$bin"
+            codesign --verify --strict --verbose=2 "$dir/$bin"
+            cp "$dir/$bin" "$RUNNER_TEMP/notarize/"
+          done
+          # Bare executables cannot be stapled; Gatekeeper finds the
+          # notarization ticket online on first launch.
+          ditto -c -k --keepParent "$RUNNER_TEMP/notarize" "$RUNNER_TEMP/notarize.zip"
+          result=$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
+            --wait --output-format json)
+          echo "$result"
+          status=$(echo "$result" | python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])')
+          [ "$status" = "Accepted" ] || { echo "::error::Notarization status: $status"; exit 1; }
+          security delete-keychain "$keychain"
+      - name: Note unsigned build
+        if: (runner.os == 'Windows' && env.WINDOWS_SIGNING != 'true') || (runner.os == 'macOS' && env.MACOS_SIGNING != 'true')
+        run: echo "::warning::No signing secrets for ${{ runner.os }}; this build is unsigned (docs/CODE_SIGNING.md)."
       - name: Package
         shell: bash
         run: |
@@ -63,15 +135,36 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      # Lets anyone check an archive was built by this workflow from this
+      # repository: `gh attestation verify <archive> -R KabirRao1/ferry`.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*
+      # The notes are the tag's section of CHANGELOG.md, falling back to
+      # GitHub's generated notes when the section is missing.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           (cd dist && sha256sum * > SHA256SUMS)
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then
+            notes=(--notes-file notes.md)
+          else
+            notes=(--generate-notes)
+          fi
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --repo "$GITHUB_REPOSITORY" --title "Ferry $GITHUB_REF_NAME" --generate-notes
+            --repo "$GITHUB_REPOSITORY" --title "Ferry $GITHUB_REF_NAME" "${notes[@]}"

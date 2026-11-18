@@ -99,6 +99,6 @@ The UI renders on the CPU with tiny-skia by default. Compared with GPU rendering
 | App flows | `ferry-app/tests` | message sequences, including real local servers; workspaces in `MemFs` |
 | Headless UI and pixel snapshots | `ferry-ui/tests` | iced_test |
 | Fuzzing | `fuzz/` | cargo-fuzz |
-| Mutation | core, app, store | cargo-mutants (nightly in 8 shards) |
+| Mutation | core, app, store | cargo-mutants (nightly in 24 shards) |
 | Web view | `ferry-ui/examples/preview_probe.rs` | a real window, checked by eye |
 | Performance | `cargo xtask budgets` | real windows, `budgets.toml` |
