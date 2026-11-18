@@ -77,6 +77,14 @@ ferry-cli run collections/api --workspace path/to/workspace --environment stagin
 
 It prints each request and its failed tests, and exits with 0 when everything passed, 1 when a request or test failed, and 2 for invalid arguments.
 
+It also runs Postman exports directly, without importing them first, and takes variables such as API keys from the command line, so secrets can come from your CI's secret store instead of a file:
+
+```sh
+ferry-cli run "My API.postman_collection.json" --environment staging.postman_environment.json --env-var "apiKey=$API_KEY"
+```
+
+`--env-var name=value` can be repeated; it overrides the environment's value of that name (or adds it), and works with workspace collections too. [`docs/TRY_WITH_API_KEYS.md`](TRY_WITH_API_KEYS.md) walks through real APIs that need keys.
+
 | Shortcut | Action |
 |---|---|
 | Ctrl+Enter | Send |

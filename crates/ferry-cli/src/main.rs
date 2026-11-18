@@ -1,5 +1,5 @@
 //! `ferry-cli run`: run a collection or folder headless, for CI (F16-AC7,
-//! ADR-0047). Script variable changes are never saved.
+//! F16-AC8, ADR-0047). Script variable changes are never saved.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -7,21 +7,27 @@ use std::time::{Duration, SystemTime};
 
 use ferry_app::runner::{self, RunConfig, RunResult, RunStatus, Runner};
 use ferry_app::{
-    CancellationToken, Client, Config, Cookies, Finished, Jar, RealFs, TestStatus, Workspace,
-    WorkspaceStore, datafile, execute_scripted, format, run_variables,
+    CancellationToken, Client, Config, Cookies, Finished, Jar, Origin, RealFs, ScriptVariables,
+    TestStatus, Variable, Workspace, WorkspaceStore, datafile, execute_scripted, format,
+    run_variables,
 };
 
 const USAGE: &str = "Usage: ferry-cli run <collection or folder> [options]
 
-Runs the requests of a collection or folder in a Ferry workspace, with
-their scripts and tests, and exits 0 when everything passed, 1 when a
-request or test failed, and 2 for invalid arguments.
+Runs the requests of a collection or folder in a Ferry workspace, or of an
+exported Postman collection file, with their scripts and tests, and exits 0
+when everything passed, 1 when a request or test failed, and 2 for invalid
+arguments.
 
-<collection or folder>   a path in the workspace, such as collections/api or api/users
+<collection or folder>   a path in the workspace, such as collections/api or api/users,
+                         or a Postman collection file (.json)
 
 Options:
   --workspace <dir>      the workspace folder (default: the current folder)
-  --environment <name>   the environment to use, by name or file name
+  --environment <name>   the environment to use, by name or file name; with a Postman
+                         collection file, a Postman environment file
+  --env-var <name=value> set an environment variable, overriding the environment's
+                         value (repeatable); for API keys kept in CI secrets
   --iterations <n>       how many times to run (1 to 1000, default 1)
   --data <file>          a CSV or JSON data file; one iteration per row
   --delay <ms>           wait between requests (0 to 60000, default 0)
@@ -35,6 +41,8 @@ struct Args {
     target: String,
     workspace: Option<PathBuf>,
     environment: Option<String>,
+    /// `--env-var` values in order; later ones win.
+    env_vars: Vec<(String, String)>,
     iterations: Option<String>,
     data: Option<PathBuf>,
     delay: Option<String>,
@@ -60,6 +68,15 @@ fn parse_args(args: &[String]) -> Result<Args, String> {
         match arg.as_str() {
             "--workspace" => out.workspace = Some(value("--workspace")?.into()),
             "--environment" | "-e" => out.environment = Some(value("--environment")?),
+            "--env-var" => {
+                let pair = value("--env-var")?;
+                match pair.split_once('=') {
+                    Some((key, val)) if !key.trim().is_empty() => {
+                        out.env_vars.push((key.trim().to_owned(), val.to_owned()));
+                    }
+                    _ => return Err(format!("--env-var: use name=value, not \"{pair}\"")),
+                }
+            }
             "--iterations" | "-n" => out.iterations = Some(value("--iterations")?),
             "--data" | "-d" => out.data = Some(value("--data")?.into()),
             "--delay" => out.delay = Some(value("--delay")?),
@@ -107,9 +124,48 @@ fn find_environment(workspace: &Workspace, wanted: &str) -> Option<String> {
         .map(|e| e.path.clone())
 }
 
-/// The runner for `args`, or why it cannot run.
-fn prepare(args: &Args, workspace: &Workspace) -> Result<Runner, String> {
-    let path = find_target(workspace, &args.target).ok_or_else(|| {
+/// Whether `target` names a Postman collection file rather than a path in
+/// a workspace (F16-AC8).
+fn is_file_target(target: &str) -> bool {
+    let path = Path::new(target);
+    path.is_file()
+        || path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+}
+
+fn read(path: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("Could not read {path}: {e}"))
+}
+
+/// The workspace to run in, the collection or folder path and the
+/// environment path: a workspace folder, or a Postman collection file read
+/// into memory (F16-AC8), printing what its import left out.
+fn load(args: &Args) -> Result<(Workspace, String, Option<String>), String> {
+    if is_file_target(&args.target) {
+        let collection = read(&args.target)?;
+        let environment = args.environment.as_deref().map(read).transpose()?;
+        let loaded =
+            ferry_app::file_workspace(&collection, environment.as_deref()).map_err(|e| {
+                match (&args.environment, e.as_str()) {
+                    (Some(env), ferry_app::NOT_AN_ENVIRONMENT) => format!("{env}: {e}"),
+                    _ => format!("{}: {e}", args.target),
+                }
+            })?;
+        for line in &loaded.skipped {
+            eprintln!("Note: {line}");
+        }
+        return Ok((loaded.workspace, loaded.collection, loaded.environment));
+    }
+    let root = match &args.workspace {
+        Some(dir) => dir.clone(),
+        None => std::env::current_dir().unwrap_or_default(),
+    };
+    if !root.is_dir() {
+        return Err(format!("No workspace folder at {}", root.display()));
+    }
+    let workspace = WorkspaceStore::new(RealFs, &root).load();
+    let path = find_target(&workspace, &args.target).ok_or_else(|| {
         format!(
             "No collection or folder \"{}\" in the workspace",
             args.target
@@ -117,11 +173,45 @@ fn prepare(args: &Args, workspace: &Workspace) -> Result<Runner, String> {
     })?;
     let environment = match &args.environment {
         Some(name) => Some(
-            find_environment(workspace, name)
+            find_environment(&workspace, name)
                 .ok_or_else(|| format!("No environment named \"{name}\""))?,
         ),
         None => None,
     };
+    Ok((workspace, path, environment))
+}
+
+/// Put the `--env-var` values into the environment scope, replacing values
+/// with the same name; without an environment they form one (F16-AC8).
+fn apply_env_vars(variables: &mut ScriptVariables, env_vars: &[(String, String)]) {
+    if env_vars.is_empty() {
+        return;
+    }
+    let environment = variables.environment.get_or_insert_with(Vec::new);
+    for (key, value) in env_vars {
+        match environment.iter_mut().find(|v| v.key == *key) {
+            Some(existing) => {
+                existing.value.clone_from(value);
+                existing.enabled = true;
+            }
+            None => environment.push(Variable {
+                key: key.clone(),
+                value: value.clone(),
+                enabled: true,
+                secret: true,
+                origin: Origin::default(),
+            }),
+        }
+    }
+}
+
+/// The runner for `args` over `path` in `workspace`, or why it cannot run.
+fn prepare(
+    args: &Args,
+    workspace: &Workspace,
+    path: String,
+    environment: Option<String>,
+) -> Result<Runner, String> {
     let iterations = match &args.iterations {
         Some(text) => runner::parse_iterations(text).map_err(|e| format!("--iterations: {e}"))?,
         None => 1,
@@ -140,7 +230,9 @@ fn prepare(args: &Args, workspace: &Workspace) -> Result<Runner, String> {
     };
     let requests = runner::requests(workspace, &path);
     let link = requests.first().map(|r| r.path.clone());
-    let (variables, targets) = run_variables(workspace, environment.as_deref(), link.as_deref());
+    let (mut variables, targets) =
+        run_variables(workspace, environment.as_deref(), link.as_deref());
+    apply_env_vars(&mut variables, &args.env_vars);
     let name = ferry_app::collection::find(&workspace.collections, &path)
         .map_or_else(|| path.clone(), |item| item.name().to_owned());
     Ok(Runner::new(
@@ -270,16 +362,9 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let root = match &args.workspace {
-        Some(dir) => dir.clone(),
-        None => std::env::current_dir().unwrap_or_default(),
-    };
-    if !root.is_dir() {
-        eprintln!("No workspace folder at {}", root.display());
-        return ExitCode::from(2);
-    }
-    let workspace = WorkspaceStore::new(RealFs, &root).load();
-    let runner = match prepare(&args, &workspace) {
+    let runner = match load(&args)
+        .and_then(|(workspace, path, environment)| prepare(&args, &workspace, path, environment))
+    {
         Ok(runner) => runner,
         Err(message) => {
             eprintln!("{message}");

@@ -13,12 +13,12 @@
 | F08 | Environments | 3 | done | 63 | 0 |
 | F09 | Collections | 3 | done | 93 | 0 |
 | F10 | History | 3 | done | 28 | 0 |
-| F11 | Import/export | 5 | cURL, Postman collections and environments done (AC1–AC6); OpenAPI, Swagger and HAR detection with F30 | 37 | 0 |
+| F11 | Import/export | 5 | cURL, Postman collections and environments done (AC1–AC6); OpenAPI, Swagger and HAR detection with F30 | 38 | 0 |
 | F12 | Settings | 7 | not started | 0 | 0 |
 | F13 | Keyboard | 7 | not started | 0 | 0 |
 | F14 | Workbench layout | 2, 3 (AC6) | done | 13 | 0 |
-| F15 | Scripts and tests | 4 | done | 53 | 0 |
-| F16 | Collection Runner and CLI | 4 | done | 32 | 0 |
+| F15 | Scripts and tests | 4 | done | 55 | 0 |
+| F16 | Collection Runner and CLI | 4 | done | 39 | 0 |
 | F17 | Cookies | 3 | done | 36 | 0 |
 | F18 | Console | 3 | done | 10 | 0 |
 | F19 | Code snippets | 5 | done (12 languages, 48 snapshots) | 8 | 0 |

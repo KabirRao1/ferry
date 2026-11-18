@@ -295,3 +295,64 @@ fn f11_ac3_saving_an_imported_request_keeps_its_description() {
         AuthKind::None
     );
 }
+
+const STAGING: &str = r#"{ "name": "Staging", "_postman_variable_scope": "environment", "values": [
+    { "key": "base", "value": "https://staging", "enabled": true },
+    { "key": "token", "value": "abc", "type": "secret", "enabled": true } ] }"#;
+
+#[test]
+fn f16_ac8_a_postman_file_runs_from_a_workspace_in_memory() {
+    let loaded = ferry_app::file_workspace(PAYMENTS, Some(STAGING)).unwrap();
+    let item = collection::find(&loaded.workspace.collections, &loaded.collection)
+        .expect("the collection is in the workspace");
+    assert!(
+        loaded.collection.starts_with("collections/"),
+        "{}",
+        loaded.collection
+    );
+    let expected = import(PAYMENTS).unwrap();
+    let Import::Collection(c) = expected.import else {
+        panic!("payments is a collection")
+    };
+    assert_eq!(from_tree(item).unwrap().counts(), c.counts());
+    assert_eq!(loaded.skipped, expected.skipped);
+    let env = loaded
+        .workspace
+        .environment(loaded.environment.as_deref().unwrap())
+        .expect("the environment is in the workspace");
+    assert_eq!(env.name(), "Staging");
+    let vars = &env.file.as_ref().unwrap().variables;
+    assert_eq!(
+        (vars[1].key.as_str(), vars[1].value.as_str()),
+        ("token", "abc")
+    );
+    assert!(vars[1].secret);
+}
+
+#[test]
+fn f16_ac8_without_an_environment_none_is_selected() {
+    let loaded = ferry_app::file_workspace(PAYMENTS, None).unwrap();
+    assert_eq!(loaded.environment, None);
+    assert!(loaded.workspace.environments.is_empty());
+}
+
+#[test]
+fn f16_ac8_files_of_the_wrong_kind_are_refused() {
+    for (collection, environment, message) in [
+        (STAGING, None, ferry_app::NOT_A_COLLECTION),
+        (
+            "curl https://example.com",
+            None,
+            ferry_app::NOT_A_COLLECTION,
+        ),
+        (PAYMENTS, Some(PAYMENTS), ferry_app::NOT_AN_ENVIRONMENT),
+        ("[1, 2]", None, NOT_IMPORTABLE),
+    ] {
+        assert_eq!(
+            ferry_app::file_workspace(collection, environment).unwrap_err(),
+            message
+        );
+    }
+    let err = ferry_app::file_workspace("{ nope", None).unwrap_err();
+    assert!(err.contains("not valid JSON"), "{err}");
+}

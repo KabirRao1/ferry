@@ -66,6 +66,9 @@ pub use ferry_store::{
     WorkspaceStore, data_dir, watch,
 };
 pub use find::{FILTER_TOO_LARGE, Filter, FilterState, Find, NO_RESULTS, run as run_find};
+pub use import::{
+    FileWorkspace, NOT_A_COLLECTION, NOT_AN_ENVIRONMENT, collection_ops, file_workspace,
+};
 pub use preview::{PREVIEW_UNAVAILABLE, PreviewTarget, extension, previewable};
 pub use runner_tab::{RunnerDoc, RunnerEdit, RunnerItem, run_step};
 pub use scripting::{

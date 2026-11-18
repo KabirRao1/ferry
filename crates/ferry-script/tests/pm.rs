@@ -253,6 +253,56 @@ fn f15_ac3_syntax_errors_name_their_line() {
 }
 
 #[test]
+fn f15_ac3_a_top_level_return_ends_the_script() {
+    let mut w = World::new();
+    let outcome = w.post(
+        "pm.test('before', () => {});
+if (pm.response.code === 200) {
+  return;
+}
+pm.test('after', () => {});",
+    );
+    assert_eq!(outcome.error, None);
+    let names: Vec<&str> = outcome.tests.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["before"]);
+}
+
+#[test]
+fn f15_ac3_scripts_run_as_function_bodies() {
+    let mut w = World::new();
+    // Declarations are local to the script, implicit globals are not, and
+    // `this` is the global object; a trailing line comment still closes.
+    let outcome = w.post(
+        "var local = 1;
+helper = () => 2;
+pm.test('globals', () => {
+  pm.expect(typeof globalThis.local).to.equal('undefined');
+  pm.expect(globalThis.helper()).to.equal(2);
+  pm.expect(this).to.equal(globalThis);
+});
+// done",
+    );
+    assert_eq!(outcome.error, None);
+    assert_eq!(
+        outcome.tests[0].status,
+        TestStatus::Passed,
+        "{:?}",
+        outcome.tests
+    );
+    // Closing the wrapper early does not run code outside it: the whole
+    // script fails to parse.
+    let error = w
+        .post(
+            "return 5;
+}); throw new Error('escaped');//",
+        )
+        .error
+        .unwrap();
+    assert!(error.contains("SyntaxError"), "{error}");
+    assert!(!error.contains("escaped"), "{error}");
+}
+
+#[test]
 fn f15_ac3_tests_before_a_throw_still_count() {
     let mut w = World::new();
     let outcome = w.post("pm.test('first', () => {});\nthrow new Error('later');");

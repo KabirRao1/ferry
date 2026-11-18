@@ -1,5 +1,6 @@
 //! The Import dialog (F11-AC2..AC5) and `Export…` (F11-AC6).
 
+use std::path::Path;
 use std::sync::Arc;
 
 use ferry_core::collection::{
@@ -8,7 +9,8 @@ use ferry_core::collection::{
 use ferry_core::environment::VariablesFile;
 use ferry_core::import::{self, Collection, Entry, Import, postman};
 use ferry_core::names;
-use ferry_core::workspace::{ENVIRONMENTS_DIR, Op};
+use ferry_core::workspace::{ENVIRONMENTS_DIR, Op, Workspace};
+use ferry_store::{MemFs, WorkspaceStore};
 
 use crate::app::{App, Effect, Message};
 use crate::doc::Doc;
@@ -60,6 +62,94 @@ fn entry_ops(dir: &str, items: &[Entry], ops: &mut Vec<Op>) {
         });
     }
 }
+
+// CONTRACT
+/// The directory for collection `c` under `collections/`, its name (made
+/// unique among the directory names in `taken`, F09-AC8) and the operations
+/// that create it.
+#[must_use]
+pub fn collection_ops(c: &Collection, taken: &[&str]) -> (String, String, Vec<Op>) {
+    let dir_name = names::item_file(&c.file.name, "", taken);
+    let dir = join(COLLECTIONS_DIR, &dir_name);
+    let file = CollectionFile {
+        name: dir_name.clone(),
+        ..c.file.clone()
+    };
+    let settings = join(&dir, COLLECTION_FILE);
+    let mut ops = vec![
+        Op::CreateDir(dir.clone()),
+        Op::Write {
+            path: settings.clone(),
+            contents: collection::write_collection(&file),
+        },
+    ];
+    if let Some(local) = collection::write_collection_local(&file) {
+        ops.push(local_op(&settings, Some(local)));
+    }
+    entry_ops(&dir, &c.items, &mut ops);
+    (dir, dir_name, ops)
+}
+
+// CONTRACT
+/// A workspace held in memory with a Postman collection and, optionally, a
+/// Postman environment in it, so `ferry-cli` can run exported files without
+/// importing them first (F16-AC8).
+#[derive(Debug)]
+pub struct FileWorkspace {
+    pub workspace: Workspace,
+    /// The collection's path, `collections/<name>`.
+    pub collection: String,
+    /// The environment's path, when one was given.
+    pub environment: Option<String>,
+    /// What the import did not carry over, one line each (F11-AC4).
+    pub skipped: Vec<String>,
+}
+
+// CONTRACT
+/// Read `collection` (and `environment`) as Postman files into a
+/// [`FileWorkspace`]. Nothing is written to disk.
+///
+/// # Errors
+/// The text to show when either is not the expected kind of file or cannot
+/// be read.
+pub fn file_workspace(
+    collection: &str,
+    environment: Option<&str>,
+) -> Result<FileWorkspace, String> {
+    let imported = import::import(collection).map_err(|e| e.to_string())?;
+    let Import::Collection(c) = imported.import else {
+        return Err(NOT_A_COLLECTION.to_owned());
+    };
+    let mut skipped = imported.skipped;
+    let (dir, _, mut ops) = collection_ops(&c, &[]);
+    let env_path = match environment {
+        Some(text) => {
+            let imported = import::import(text).map_err(|e| e.to_string())?;
+            let Import::Environment(file) = imported.import else {
+                return Err(NOT_AN_ENVIRONMENT.to_owned());
+            };
+            skipped.extend(imported.skipped);
+            let wanted = file.name.as_deref().unwrap_or("Imported Environment");
+            let path = join(ENVIRONMENTS_DIR, &names::item_file(wanted, ".toml", &[]));
+            ops.extend(variables_ops(&path, &file));
+            Some(path)
+        }
+        None => None,
+    };
+    let store = WorkspaceStore::new(MemFs::new(), Path::new("workspace"));
+    store.apply(&ops).map_err(|e| e.to_string())?;
+    Ok(FileWorkspace {
+        workspace: store.load(),
+        collection: dir,
+        environment: env_path,
+        skipped,
+    })
+}
+
+/// Shown when the file given to run is not a Postman collection (F16-AC8).
+pub const NOT_A_COLLECTION: &str = "This is not a Postman collection";
+/// Shown when the environment file is not a Postman environment (F16-AC8).
+pub const NOT_AN_ENVIRONMENT: &str = "This is not a Postman environment";
 
 impl App {
     pub(crate) fn import_message(&mut self, message: Message) -> Option<Effect> {
@@ -175,25 +265,7 @@ impl App {
     /// collections, F09-AC8) and the operations creating it.
     fn collection_ops_for(&self, c: &Collection) -> (String, String, Vec<Op>) {
         let siblings = children(&self.workspace, COLLECTIONS_DIR);
-        let dir_name = names::item_file(&c.file.name, "", &as_strs(&siblings));
-        let dir = join(COLLECTIONS_DIR, &dir_name);
-        let file = CollectionFile {
-            name: dir_name.clone(),
-            ..c.file.clone()
-        };
-        let settings = join(&dir, COLLECTION_FILE);
-        let mut ops = vec![
-            Op::CreateDir(dir.clone()),
-            Op::Write {
-                path: settings.clone(),
-                contents: collection::write_collection(&file),
-            },
-        ];
-        if let Some(local) = collection::write_collection_local(&file) {
-            ops.push(local_op(&settings, Some(local)));
-        }
-        entry_ops(&dir, &c.items, &mut ops);
-        (dir, dir_name, ops)
+        collection_ops(c, &as_strs(&siblings))
     }
 
     fn export(&mut self, target: &Target) -> Option<Effect> {

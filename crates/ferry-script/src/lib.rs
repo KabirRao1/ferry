@@ -467,7 +467,7 @@ fn run_one(
     };
     context.with(|ctx| {
         let setup = install(&ctx, shared, input).and_then(|()| eval(&ctx, PRELUDE, "prelude"));
-        let result = setup.and_then(|()| eval(&ctx, source, "script"));
+        let result = setup.and_then(|()| eval(&ctx, &wrap(source), "script"));
         let failure = result.err().map(|message| {
             if cancelled.get() {
                 Failure::Cancelled
@@ -488,6 +488,16 @@ fn run_one(
             .and_then(|json| serde_json::from_str::<Output>(&json).ok());
         (output, failure)
     })
+}
+
+/// `source` as the body of a function, as Postman runs scripts, so a
+/// top-level `return` ends the script (F15-AC3). The wrapper opens on the
+/// script's first line, so syntax errors keep their line numbers.
+fn wrap(source: &str) -> String {
+    format!(
+        "(function () {{{source}
+}}).call(globalThis);"
+    )
 }
 
 /// Evaluate `source` as global code; the error's text if it throws.

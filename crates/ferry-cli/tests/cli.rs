@@ -1,5 +1,5 @@
-//! `ferry-cli run` end to end (F16-AC7): the real binary against a
-//! workspace folder and a local server.
+//! `ferry-cli run` end to end (F16-AC7, F16-AC8): the real binary against
+//! a workspace folder or Postman files and a local server.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code
 
 use std::path::{Path, PathBuf};
@@ -247,4 +247,172 @@ fn f16_ac7_an_empty_collection_passes() {
     let (code, out, _) = cli(&f.0, &["run", "empty"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("0 requests in 0 iterations"), "{out}");
+}
+
+/// A Postman collection that sends `{{apiKey}}` in a header to `{{base}}`
+/// and tests for a 200, and an environment that sets `base` and has a
+/// disabled `apiKey`, so the collection value is used until `--env-var`.
+fn postman_files(f: &Folder, url: &str) {
+    f.put(
+        "keys.postman_collection.json",
+        r#"{
+  "info": { "name": "Keys", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+  "variable": [ { "key": "apiKey", "value": "from-collection" } ],
+  "item": [ {
+    "name": "Me",
+    "event": [ { "listen": "test", "script": { "exec": [
+      "pm.test('authorized', () => pm.response.to.have.status(200));"
+    ] } } ],
+    "request": { "method": "GET", "header": [ { "key": "X-Api-Key", "value": "{{apiKey}}" } ], "url": "{{base}}/me" }
+  } ]
+}"#,
+    );
+    f.put(
+        "dev.postman_environment.json",
+        &format!(
+            r#"{{ "name": "Dev", "_postman_variable_scope": "environment",
+  "values": [ {{ "key": "base", "value": "{url}", "enabled": true }},
+    {{ "key": "apiKey", "value": "disabled", "enabled": false }} ] }}"#
+        ),
+    );
+}
+
+async fn key_server(key: &str) -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/me"))
+        .and(header("x-api-key", key))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/me"))
+        .respond_with(ResponseTemplate::new(401))
+        .with_priority(10)
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn f16_ac8_a_postman_collection_file_runs_with_an_environment_file() {
+    let server = key_server("from-collection").await;
+    let f = Folder::new();
+    postman_files(&f, &server.uri());
+    let (code, out, err) = cli(
+        &f.0,
+        &[
+            "run",
+            "keys.postman_collection.json",
+            "-e",
+            "dev.postman_environment.json",
+        ],
+    );
+    assert_eq!(code, 0, "{out}{err}");
+    assert!(out.starts_with("✓ GET Me 200 · "), "{out}");
+    // Nothing is written next to the files.
+    assert_eq!(f.read("collections/Keys/collection.toml"), None);
+    assert_eq!(f.read(".gitignore"), None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn f16_ac8_env_vars_override_the_environment_and_collection() {
+    let server = key_server("s3cret").await;
+    let f = Folder::new();
+    postman_files(&f, &server.uri());
+    let file_args = [
+        "run",
+        "keys.postman_collection.json",
+        "-e",
+        "dev.postman_environment.json",
+    ];
+    // The collection's placeholder key is refused...
+    let (code, out, _) = cli(&f.0, &file_args);
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("✗ GET Me 401"), "{out}");
+    // ...and the key from --env-var is sent; the last of a name wins.
+    let mut args = file_args.to_vec();
+    args.extend(["--env-var", "apiKey=wrong", "--env-var", "apiKey=s3cret"]);
+    let (code, out, err) = cli(&f.0, &args);
+    assert_eq!(code, 0, "{out}{err}");
+    // Without an environment, --env-var forms one.
+    let (code, out, err) = cli(
+        &f.0,
+        &[
+            "run",
+            "keys.postman_collection.json",
+            "--env-var",
+            &format!("base={}", server.uri()),
+            "--env-var",
+            "apiKey=s3cret",
+        ],
+    );
+    assert_eq!(code, 0, "{out}{err}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn f16_ac8_env_vars_work_with_a_workspace() {
+    let server = server().await;
+    let f = workspace(&server.uri());
+    // `who` comes from --env-var instead of the environment file.
+    Mock::given(method("GET"))
+        .and(path("/users"))
+        .and(query_param("who", "env"))
+        .respond_with(ResponseTemplate::new(500))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let (code, out, err) = cli(
+        &f.0,
+        &["run", "api", "-e", "staging", "--env-var", "who=cli"],
+    );
+    assert_eq!(code, 0, "{out}{err}");
+    assert_eq!(f.read("environments/staging.local.toml"), None);
+}
+
+#[test]
+fn f16_ac8_bad_files_and_env_vars_exit_2() {
+    let f = Folder::new();
+    postman_files(&f, "http://127.0.0.1:9");
+    f.put("not-postman.json", "[1, 2]");
+    for (args, message) in [
+        (vec!["run", "missing.json"], "Could not read missing.json"),
+        (
+            vec!["run", "not-postman.json"],
+            "not-postman.json: Ferry cannot import this",
+        ),
+        (
+            vec!["run", "dev.postman_environment.json"],
+            "dev.postman_environment.json: This is not a Postman collection",
+        ),
+        (
+            vec![
+                "run",
+                "keys.postman_collection.json",
+                "-e",
+                "keys.postman_collection.json",
+            ],
+            "keys.postman_collection.json: This is not a Postman environment",
+        ),
+        (
+            vec!["run", "keys.postman_collection.json", "-e", "nope.json"],
+            "Could not read nope.json",
+        ),
+        (
+            vec!["run", "keys.postman_collection.json", "--env-var", "apiKey"],
+            "--env-var: use name=value, not \"apiKey\"",
+        ),
+        (
+            vec!["run", "keys.postman_collection.json", "--env-var", "=x"],
+            "--env-var: use name=value, not \"=x\"",
+        ),
+        (
+            vec!["run", "keys.postman_collection.json", "--env-var"],
+            "--env-var needs a value",
+        ),
+    ] {
+        let (code, _, err) = cli(&f.0, &args);
+        assert_eq!(code, 2, "{args:?}: {err}");
+        assert!(err.contains(message), "{args:?}: {err}");
+    }
 }
