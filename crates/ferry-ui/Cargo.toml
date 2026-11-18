@@ -20,7 +20,7 @@ ferry-app.workspace = true
 # `selector`: finds the body area's bounds, where the preview web view goes (F22).
 iced = { workspace = true, features = ["tiny-skia", "tokio", "x11", "wayland", "selector"] }
 # Native file dialogs for form-data and binary bodies (F03-AC5, F03-AC6).
-rfd = "0.17"
+rfd = "0.18"
 tokio = { workspace = true, features = ["rt"] }
 
 # The Preview web view (F22, ADR-0041): WebView2 on Windows, WKWebView on macOS.
