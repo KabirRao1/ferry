@@ -6,12 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-18
+
+The first public release: a native, offline Postman-style API client with scripts, tests, a Collection Runner and a CLI.
+
 ### Added
 
+- `ferry-cli run` runs an exported Postman collection file directly, with a Postman environment file, without importing them into a workspace.
+- `ferry-cli run --env-var name=value` sets variables such as API keys from the command line or CI secrets, overriding the environment.
 - Import: Postman collections (v2.0 and v2.1) and environments, from a file or pasted text, with a summary of anything not carried over; pasting a cURL command into the URL field or the Import dialog turns it into a request.
 - Export: collections and environments as Postman v2.1 files, without secret values.
 - Code panel: the current request as code in 12 languages (cURL, HTTPie, Python, JavaScript, Node.js, Go, Rust, Java, C#, PHP, Ruby, Swift), with Copy.
-- Scripts: pre-request and post-response JavaScript on requests, folders and collections, with Postman's `pm` API (`pm.test`, `pm.expect`, `pm.response`, `pm.request`, `pm.environment`, `pm.variables`, `pm.sendRequest` and more), run in a QuickJS sandbox with time and memory limits.
+- Scripts: pre-request and post-response JavaScript on requests, folders and collections, with Postman's `pm` API (`pm.test`, `pm.expect`, `pm.response`, `pm.request`, `pm.environment`, `pm.variables`, `pm.sendRequest` and more), run in a QuickJS sandbox with time and memory limits. Each script runs as a function body, as in Postman, so a top-level `return` ends it early.
 - Test Results tab with passed, failed and skipped tests and filters; script `console` output in the Console.
 - Collection Runner: run a collection or folder with iterations, a delay and CSV or JSON data files, follow results live, stop, and export a JSON report.
 - `ferry-cli run` for running collections in CI, with exit codes and a JSON report.
@@ -52,3 +58,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Merge gate: fmt, clippy, tests, coverage floors, cargo-deny, performance budgets, architecture check and mutation testing.
 - CI on Linux, macOS and Windows, plus nightly fuzzing and full mutation runs.
 - The binary-size budget measures `ferry` as it is released, without features that only the tests use.
+
+[Unreleased]: https://github.com/KabirRao1/ferry/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/KabirRao1/ferry/releases/tag/v0.1.0

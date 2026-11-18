@@ -2,6 +2,16 @@
 
 **Phase:** 5 in progress (user asked 2026-10-19 to build the remaining phases). Phase 4 pushed in 150afdf.
 
+## v0.1.0 release prep (2026-11-18, resume here)
+- User asked to finish the project for public use: verify everything, show testing with API keys, release, and write a launch write-up. Decision: ship v0.1.0 with Phases 0-4 plus the Phase 5 parts done (import/export, snippets); Phases 5 (rest), 6 and 7 stay on the roadmap.
+- Added F16-AC8: `ferry-cli run <file>.postman_collection.json [-e <file>.postman_environment.json] [--env-var k=v]...` (in-memory workspace via `ferry_app::file_workspace`).
+- Fixed: scripts now run as function bodies (top-level `return` works, as in Postman); found by running the demo tour against live APIs.
+- New `docs/TRY_WITH_API_KEYS.md` + `docs/demo/API Keys Tour` collection/environment (httpbin, NASA DEMO_KEY, GitHub, Anthropic); verified live, GitHub path with a real token.
+- Nightly: fuzz 10 min/target, mutants 24 shards (8 shards all hit the time limit; shard 0 alone had 16 surviving mutants to close once the run completes).
+- Release workflow: changelog notes, build provenance attestations, Windows (Azure Artifact Signing) and macOS (Developer ID + notarization) signing gated on secrets; see `docs/CODE_SIGNING.md`. The release workflow has never run; dispatch it once before tagging.
+- RUSTSEC-2026-0543 (chrono unmaintained, new since the last CI run) failed cargo-deny; chrono only read the local UTC offset, so it is replaced by jiff 1 (`ZonedDateTime::now().offset()`), checked against the OS offset on Windows.
+- Open Dependabot PR #2 (sysinfo 0.40 breaks xtask, base64 0.23) left for after the release.
+
 ## Phase 3 progress (resume here)
 - Phase 3 complete: CI run 39364317363 (c2b6ed3) green on Linux, macOS and Windows, fuzz smoke included. Linux and macOS budget baselines recorded from it (binary 15.09 MB and 10.10 MB; idle RSS 1.64x and 1.06x; macOS scroll p95 15.47 ms, FND-008).
 - User asked (2026-10-19) to build the remaining phases (4-7) for a public release; go phase by phase, each pushed green, with a short summary at each boundary.

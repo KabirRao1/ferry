@@ -1,6 +1,6 @@
 # Ferry: project overview
 
-One-page summary of what Ferry is, how it is built and how it is verified. Details live in the linked docs; numbers here are as of Phase 5 in progress (2026-10-29) and are updated at each phase.
+One-page summary of what Ferry is, how it is built and how it is verified. Details live in the linked docs; numbers here are as of the v0.1.0 release (2026-11-18) and are updated at each phase.
 
 ## What it is
 
@@ -51,9 +51,9 @@ Key techniques, each recorded as a decision in [DECISIONS.md](DECISIONS.md) (53 
 
 ## How it is verified
 
-- **691 automated tests**, each named after the acceptance criterion it covers (`f15_ac9_…`): unit, property-based (proptest), headless UI tests with iced's simulator, byte-exact UI snapshot images, and end-to-end tests against local mock servers (wiremock), including the CLI binary.
+- **701 automated tests**, each named after the acceptance criterion it covers (`f15_ac9_…`): unit, property-based (proptest), headless UI tests with iced's simulator, byte-exact UI snapshot images, and end-to-end tests against local mock servers (wiremock), including the CLI binary.
 - **Coverage floors** enforced in CI: core, app and store at 90 % or more (currently 92–99 %).
-- **Mutation testing** with cargo-mutants on every change and nightly over everything (8 parallel shards); surviving mutants become new tests.
+- **Mutation testing** with cargo-mutants on every change and nightly over everything (24 parallel shards); surviving mutants become new tests.
 - **Fuzzing** with cargo-fuzz: 8 targets (JSON, body index, params sync, cookies, variables, file formats, scripts, imports), smoke-run in CI.
 - **Performance budgets** checked in CI on Windows, macOS and Linux: idle memory within 2× an empty window with 10 tabs open, cold start under 400 ms, 16 ms frame time while scrolling a 50 MB body, and binary size growth limited to 10 % per phase.
 - **Supply chain**: cargo-deny for licenses, advisories and sources.
@@ -63,9 +63,9 @@ Key techniques, each recorded as a decision in [DECISIONS.md](DECISIONS.md) (53 
 
 | | |
 |---|---|
-| Rust source | about 42,000 lines (crates and xtask), 17,000 of them tests |
+| Rust source | about 42,500 lines (crates and xtask), 17,000 of them tests |
 | Crates | 8 |
-| Tests | 691 |
+| Tests | 701 |
 | Decisions (ADRs) | 53 |
 | Findings fixed | 23 |
 | Release binary | 15.2 MB on Windows; idle with 10 tabs about 26 MB |

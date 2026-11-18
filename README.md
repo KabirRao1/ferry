@@ -17,9 +17,9 @@ Developers use tools like Postman to send HTTP requests to an API and inspect wh
 |---|---|
 | **What** | A cross-platform desktop API client: build requests, send them, inspect responses, script tests, run whole collections |
 | **Built with** | Rust, [iced](https://iced.rs) (native UI), reqwest + rustls (HTTP), QuickJS (sandboxed JavaScript), wry (embedded web view) |
-| **Size** | About 42,000 lines of Rust in 8 crates, 691 automated tests, 53 written design decisions |
+| **Size** | About 42,500 lines of Rust in 8 crates, 701 automated tests, 53 written design decisions |
 | **Quality gates** | Coverage floors, mutation testing, fuzzing, UI snapshot tests and performance budgets, run on Windows, macOS and Linux in CI |
-| **Status** | Phases 0–4 complete; Phase 5 (import/export, code snippets, advanced auth) in progress |
+| **Status** | **v0.1.0**, the first public release: Phases 0–4 complete, plus Postman import/export and code snippets from Phase 5 ([roadmap](#roadmap)) |
 
 ## What it does
 
@@ -29,7 +29,11 @@ Developers use tools like Postman to send HTTP requests to an API and inspect wh
 
 ![Test results after a send](docs/images/tests.png)
 
-**Run whole collections.** The Collection Runner sends a folder of requests in order, repeats them over rows of a CSV or JSON data file, and reports every test. `ferry-cli` runs the same collections headless in CI and exits non-zero when a test fails.
+**Run whole collections.** The Collection Runner sends a folder of requests in order, repeats them over rows of a CSV or JSON data file, and reports every test. `ferry-cli` runs the same collections headless in CI and exits non-zero when a test fails. It also runs an exported Postman collection file as it is, and takes API keys from CI secrets with `--env-var`, so it can stand in for Newman:
+
+```sh
+ferry-cli run "My API.postman_collection.json" -e staging.postman_environment.json --env-var "apiKey=$API_KEY"
+```
 
 ![Collection Runner results](docs/images/runner.png)
 
@@ -71,19 +75,35 @@ The dependency direction above is enforced by a build check (`cargo xtask arch`)
 
 | Technique | What it does here |
 |---|---|
-| Unit and integration tests | 691 tests, each named after the acceptance criterion it covers (e.g. `f15_ac9_…`) in the [spec](docs/SPEC.md) |
+| Unit and integration tests | 701 tests, each named after the acceptance criterion it covers (e.g. `f15_ac9_…`) in the [spec](docs/SPEC.md) |
 | Headless UI tests | iced's simulator clicks and types into the real views; 24 byte-exact screenshot tests catch visual regressions |
 | End-to-end | Real HTTP against local mock servers (wiremock), including the CLI binary |
 | Property-based tests | proptest for URL/params sync, variables, cookies, cURL round-trips |
 | Fuzzing | 8 cargo-fuzz targets; findings such as unbounded JSON nesting and variable-expansion blow-ups are fixed with regression tests |
-| Mutation testing | cargo-mutants on every change and nightly over the whole codebase in 8 parallel shards; any surviving mutant needs a new test |
+| Mutation testing | cargo-mutants on every change and nightly over the whole codebase in 24 parallel shards; any surviving mutant needs a new test |
 | Coverage floors | core, app and store must stay at 90 % or more (currently 92–99 %) |
 | Performance budgets | Idle memory, startup time, frame time while scrolling a 50 MB body, and binary size, measured on all three OSes |
 | Supply chain | cargo-deny checks licenses, security advisories and crate sources |
 
 Every bug these checks found is written up with its fix and regression test in [FINDINGS.md](docs/FINDINGS.md), and every design choice is recorded with its alternatives in [DECISIONS.md](docs/DECISIONS.md).
 
-## Run it
+## Download
+
+Prebuilt apps for Windows, macOS (Apple silicon and Intel) and Linux are on the [Releases page](https://github.com/KabirRao1/ferry/releases/latest). Each archive holds `ferry` (the app) and `ferry-cli` (the command-line runner); there is no installer and no account. Unzip it and run `ferry`.
+
+The binaries are not code-signed yet, so the first launch needs one extra step:
+
+| OS | First launch |
+|---|---|
+| **Windows** | If SmartScreen says "Windows protected your PC", choose **More info → Run anyway**. |
+| **macOS** | In Terminal, in the unpacked folder: `xattr -dr com.apple.quarantine ferry ferry-cli`, then open `ferry`. |
+| **Linux** | Run `./ferry`. It needs `libxkbcommon` and a Wayland or X11 desktop, which most distributions include. |
+
+`SHA256SUMS` on the release page lists each archive's checksum, and every archive carries a GitHub build provenance attestation: `gh attestation verify <archive> -R KabirRao1/ferry` proves it was built by this repository's release workflow. Code signing is set up in the workflow and turns on once certificates are added ([`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md)).
+
+**First things to try:** paste `https://httpbin.org/json` into the URL bar and press **Ctrl+Enter**; press **Import** and choose [`docs/demo/Ferry Demo.postman_collection.json`](docs/demo/Ferry%20Demo.postman_collection.json); then follow [**Try Ferry with real API keys**](docs/TRY_WITH_API_KEYS.md), which goes from APIs that need no account to GitHub and the Anthropic API.
+
+## Build from source
 
 Install [Rust](https://rustup.rs) and your platform's build tools:
 
@@ -124,6 +144,7 @@ The goal is every Postman feature that runs on your own machine ([parity map](do
 | Document | Contents |
 |---|---|
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | How to use every feature |
+| [`docs/TRY_WITH_API_KEYS.md`](docs/TRY_WITH_API_KEYS.md) | A tour of real APIs with keys, in the app, the CLI and CI |
 | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | One-page summary of features, architecture and verification |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How the crates fit together |
 | [`docs/SPEC.md`](docs/SPEC.md) | Features and acceptance criteria |
