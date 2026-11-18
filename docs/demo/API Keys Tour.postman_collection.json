@@ -1,0 +1,371 @@
+{
+	"info": {
+		"name": "API Keys Tour",
+		"description": "Real APIs that need credentials, from none to paid. Fill in the keys you have in the API Keys environment (or pass them with ferry-cli --env-var); requests without a key skip their tests instead of failing. See docs/TRY_WITH_API_KEYS.md.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "demoToken",
+			"value": "ferry-demo-token"
+		},
+		{
+			"key": "demoPassword",
+			"value": "open-sesame"
+		},
+		{
+			"key": "nasaKey",
+			"value": "DEMO_KEY"
+		},
+		{
+			"key": "githubToken",
+			"value": ""
+		},
+		{
+			"key": "anthropicKey",
+			"value": ""
+		},
+		{
+			"key": "anthropicModel",
+			"value": "claude-opus-5-5"
+		}
+	],
+	"item": [
+		{
+			"name": "1 - No signup (httpbin.org)",
+			"description": "httpbin.org echoes what it receives, so these show that Ferry sends each kind of credential correctly. Any value works.",
+			"item": [
+				{
+					"name": "Bearer token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"the token arrived\", () => pm.expect(pm.response.json().token).to.equal(pm.variables.get(\"demoToken\")));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "https://httpbin.org/bearer",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{demoToken}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Basic auth",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"authenticated as ferry\", () => pm.expect(pm.response.json()).to.include({ authenticated: true, user: \"ferry\" }));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "https://httpbin.org/basic-auth/ferry/{{demoPassword}}",
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "ferry",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{demoPassword}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "API key in a header",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"the X-Api-Key header arrived\", () => pm.expect(pm.response.json().headers[\"X-Api-Key\"]).to.equal(pm.variables.get(\"demoToken\")));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "https://httpbin.org/headers",
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{
+									"key": "key",
+									"value": "X-Api-Key",
+									"type": "string"
+								},
+								{
+									"key": "value",
+									"value": "{{demoToken}}",
+									"type": "string"
+								},
+								{
+									"key": "in",
+									"value": "header",
+									"type": "string"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2 - Free key (NASA)",
+			"description": "DEMO_KEY works without signing up (about 30 requests an hour). A free personal key from https://api.nasa.gov arrives by email in a minute.",
+			"item": [
+				{
+					"name": "Astronomy Picture of the Day",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// The shared DEMO_KEY is limited per IP address and is often busy.",
+									"const shared = pm.variables.get(\"nasaKey\") === \"DEMO_KEY\";",
+									"if (shared && (pm.response.code === 429 || pm.response.code >= 500)) {",
+									"  pm.test.skip(\"NASA answers (the shared DEMO_KEY is busy: get a free key at https://api.nasa.gov)\");",
+									"  return;",
+									"}",
+									"pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"const apod = pm.response.json();",
+									"pm.test(\"has a title and a date\", () => {",
+									"  pm.expect(apod.title).to.be.a(\"string\");",
+									"  pm.expect(apod.date).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+									"});",
+									"console.log(`${apod.date}: ${apod.title}`);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "https://api.nasa.gov/planetary/apod?thumbs=true",
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{
+									"key": "key",
+									"value": "api_key",
+									"type": "string"
+								},
+								{
+									"key": "value",
+									"value": "{{nasaKey}}",
+									"type": "string"
+								},
+								{
+									"key": "in",
+									"value": "query",
+									"type": "string"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3 - Your account (GitHub)",
+			"description": "Create a fine-grained personal access token at https://github.com/settings/personal-access-tokens (read-only, public repositories is enough) and put it in githubToken.",
+			"item": [
+				{
+					"name": "Who am I",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const key = pm.variables.get(\"githubToken\");",
+									"if (!key) {",
+									"  pm.test.skip(\"GitHub returns your profile (set githubToken to run this)\");",
+									"} else {",
+									"  pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"  pm.test(\"has a login\", () => pm.expect(pm.response.json().login).to.be.a(\"string\"));",
+									"  pm.collectionVariables.set(\"githubLogin\", pm.response.json().login);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/vnd.github+json"
+							},
+							{
+								"key": "X-GitHub-Api-Version",
+								"value": "2022-11-28"
+							}
+						],
+						"url": "https://api.github.com/user",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{githubToken}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "My latest repositories",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const key = pm.variables.get(\"githubToken\");",
+									"if (!key) {",
+									"  pm.test.skip(\"GitHub lists your repositories (set githubToken to run this)\");",
+									"} else {",
+									"  pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"  pm.test(\"a list of repositories\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));",
+									"  const repos = pm.response.json();",
+									"  if (Array.isArray(repos)) repos.forEach(r => console.log(r.full_name));",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/vnd.github+json"
+							},
+							{
+								"key": "X-GitHub-Api-Version",
+								"value": "2022-11-28"
+							}
+						],
+						"url": "https://api.github.com/user/repos?per_page=5&sort=updated",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{githubToken}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4 - Paid LLM API (Anthropic)",
+			"description": "Uses a few hundred tokens of your Anthropic API credit. Create a key at https://console.anthropic.com and put it in anthropicKey.",
+			"item": [
+				{
+					"name": "Ask Claude",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const key = pm.variables.get(\"anthropicKey\");",
+									"if (!key) {",
+									"  pm.test.skip(\"Claude answers (set anthropicKey to run this)\");",
+									"} else {",
+									"  pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+									"  const text = (pm.response.json().content || []).find(b => b.type === \"text\");",
+									"  pm.test(\"the reply has text\", () => pm.expect(text && text.text).to.be.a(\"string\").and.not.empty);",
+									"  if (text) console.log(text.text);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "anthropic-version",
+								"value": "2026-10-21"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "https://api.anthropic.com/v1/messages",
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{
+									"key": "key",
+									"value": "x-api-key",
+									"type": "string"
+								},
+								{
+									"key": "value",
+									"value": "{{anthropicKey}}",
+									"type": "string"
+								},
+								{
+									"key": "in",
+									"value": "header",
+									"type": "string"
+								}
+							]
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"model\": \"{{anthropicModel}}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"In one sentence, what does an API client like Postman do?\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					}
+				}
+			]
+		}
+	]
+}

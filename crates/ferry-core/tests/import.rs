@@ -701,3 +701,36 @@ fn f11_ac3_the_demo_collection_imports_completely() {
     assert_eq!(c.file.name, "Ferry Demo");
     assert_eq!(c.counts(), (3, 1));
 }
+
+/// The API keys tour (docs/TRY_WITH_API_KEYS.md) and its environment import
+/// completely, with the keys marked secret.
+#[test]
+fn f11_ac3_ac5_the_api_keys_tour_imports_completely() {
+    let (c, skipped) = collection(include_str!(
+        "../../../docs/demo/API Keys Tour.postman_collection.json"
+    ));
+    assert_eq!(skipped, Vec::<String>::new());
+    assert_eq!(c.file.name, "API Keys Tour");
+    assert_eq!(c.counts(), (7, 4));
+    let imported = import(include_str!(
+        "../../../docs/demo/API Keys.postman_environment.json"
+    ))
+    .unwrap();
+    assert_eq!(imported.skipped, Vec::<String>::new());
+    let Import::Environment(env) = imported.import else {
+        panic!("not an environment")
+    };
+    let keys: Vec<(&str, bool)> = env
+        .variables
+        .iter()
+        .map(|v| (v.key.as_str(), v.secret))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            ("nasaKey", true),
+            ("githubToken", true),
+            ("anthropicKey", true)
+        ]
+    );
+}
